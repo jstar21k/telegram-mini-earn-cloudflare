@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#0a0a0f" />
     <title>MissionVault</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -29,9 +29,25 @@
     <main class="app-shell">
       <section class="screen active" id="home-screen" data-screen="home">
         <section class="balance-panel">
-          <div>
+          <div class="balance-copy">
             <p>Vault Balance</p>
-            <strong id="balance">💎 0 Coins</strong>
+            <div class="coin-line">
+              <span class="coin-emblem" aria-hidden="true">
+                <svg viewBox="0 0 64 64">
+                  <defs>
+                    <radialGradient id="coinGlow" cx="35%" cy="28%" r="70%">
+                      <stop offset="0" stop-color="#fff8b0" />
+                      <stop offset="0.42" stop-color="#ffd700" />
+                      <stop offset="1" stop-color="#ff9f00" />
+                    </radialGradient>
+                  </defs>
+                  <circle cx="32" cy="32" r="24" fill="url(#coinGlow)" />
+                  <circle cx="32" cy="32" r="17" fill="none" stroke="rgba(80,37,0,0.42)" stroke-width="4" />
+                  <path d="M32 18v28M24 24h11a7 7 0 0 1 0 14H24M24 31h13" fill="none" stroke="#5c2c00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <strong id="balance">0 Coins</strong>
+            </div>
             <small id="balance-rupee">(= ₹0.00)</small>
           </div>
           <button class="icon-btn" id="refresh-btn" aria-label="Refresh balance">
@@ -55,20 +71,28 @@
               <span>Spin Wheel</span>
               <p id="spin-status">Each spin costs 1 energy.</p>
             </div>
-            <strong id="boost-count">0/15 boosts</strong>
+            <strong id="boost-count">🚀 0/15 Boosts</strong>
           </div>
           <div class="reward-strip" id="spin-rewards">
             <span>Rewards</span>
-            <strong>+5</strong>
-            <strong>+5</strong>
-            <strong>+10</strong>
-            <strong>+20</strong>
-            <strong>+20</strong>
-            <strong>+50</strong>
-            <strong>+100</strong>
-            <strong>+500</strong>
+            <strong data-reward="5">+5</strong>
+            <strong data-reward="5">+5</strong>
+            <strong data-reward="10">+10</strong>
+            <strong data-reward="20">+20</strong>
+            <strong data-reward="20">+20</strong>
+            <strong data-reward="50">+50</strong>
+            <strong data-reward="100">+100</strong>
+            <strong data-reward="500">+500</strong>
           </div>
-          <div class="energy-dots" id="energy-dots" aria-label="Energy"></div>
+          <div class="energy-meter" aria-label="Energy and spins">
+            <div class="energy-meter-head">
+              <span id="energy-label">⚡ 10/10 Energy left</span>
+              <span id="spins-label">🔄 0/15 spins today</span>
+            </div>
+            <div class="energy-track">
+              <span id="energy-fill"></span>
+            </div>
+          </div>
           <div class="wheel">
             <div class="wheel-pointer" aria-hidden="true"></div>
             <div class="wheel-rotor" id="spin-wheel">
@@ -86,7 +110,7 @@
             </div>
           </div>
           <div class="spin-actions">
-            <button class="primary-btn" id="spin-button" type="button">🎰 Spin Now</button>
+            <button class="primary-btn spin-now-btn" id="spin-button" type="button">🎰 SPIN NOW</button>
             <button class="secondary-btn" id="boost-energy" type="button">⚡ Boost Energy</button>
           </div>
         </section>

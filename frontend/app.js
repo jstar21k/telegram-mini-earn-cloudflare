@@ -223,6 +223,16 @@ function coins(value) {
   return Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(2);
 }
 
+function rewardClass(value) {
+  const reward = Number(value || 0);
+  if (reward >= 500) return "reward-legendary";
+  if (reward >= 100) return "reward-orange";
+  if (reward >= 50) return "reward-purple";
+  if (reward >= 20) return "reward-blue";
+  if (reward >= 10) return "reward-green";
+  return "reward-low";
+}
+
 function showLoader(show, text = "Preparing mission...") {
   const loader = $("#loader");
   loader.hidden = !show;
@@ -270,7 +280,7 @@ function openTaskChannel(channelUsername) {
 function renderUser() {
   if (!state.user) return;
   $("#user-name").textContent = state.user.first_name || state.user.username || "MissionVault";
-  $("#balance").textContent = `💎 ${coins(state.user.balance)} Coins`;
+  $("#balance").textContent = `${coins(state.user.balance)} Coins`;
   $("#balance-rupee").textContent = `(= ${money(state.user.balance)})`;
   $("#withdraw-balance").textContent = money(state.user.balance);
   $("#level-pill").textContent = state.user.level || "bronze";
@@ -285,13 +295,16 @@ function renderUser() {
 
 function renderEnergy() {
   const energy = state.energy || { energy: 0, boosts_today: 0, boost_daily_cap: ENERGY_BOOST_CAP, spins_today: 0 };
-  const dots = $("#energy-dots");
-  dots.innerHTML = Array.from({ length: ENERGY_MAX }, (_, index) => (
-    `<span class="${index < Number(energy.energy || 0) ? "filled" : ""}"></span>`
-  )).join("");
-  $("#spin-status").textContent = `${Number(energy.energy || 0)}/${ENERGY_MAX} energy · ${Number(energy.spins_today || 0)} spins today`;
-  $("#boost-count").textContent = `${Number(energy.boosts_today || 0)}/${Number(energy.boost_daily_cap || ENERGY_BOOST_CAP)} boosts`;
-  $("#spin-button").disabled = Number(energy.energy || 0) <= 0 || Number(energy.spins_today || 0) >= SPIN_CAP;
+  const energyLeft = Math.max(0, Math.min(ENERGY_MAX, Number(energy.energy || 0)));
+  const spinsToday = Number(energy.spins_today || 0);
+  const boostCap = Number(energy.boost_daily_cap || ENERGY_BOOST_CAP);
+  const boostsToday = Number(energy.boosts_today || 0);
+  $("#spin-status").textContent = energyLeft > 0 ? "Server-picked rewards. Wheel lands on your prize." : "No energy left. Boost to keep spinning.";
+  $("#energy-label").textContent = `⚡ ${energyLeft}/${ENERGY_MAX} Energy left`;
+  $("#spins-label").textContent = `🔄 ${spinsToday}/${SPIN_CAP} spins today`;
+  $("#energy-fill").style.width = `${(energyLeft / ENERGY_MAX) * 100}%`;
+  $("#boost-count").textContent = `🚀 ${boostsToday}/${boostCap} Boosts`;
+  $("#spin-button").disabled = energyLeft <= 0 || spinsToday >= SPIN_CAP;
 }
 
 function renderChallenges() {
@@ -299,12 +312,16 @@ function renderChallenges() {
   const done = Number(challenges.done_today || 0);
   const cap = Number(challenges.daily_cap || CHALLENGE_CAP);
   $("#challenge-progress").textContent = done >= cap ? "Come back tomorrow!" : `${done}/${cap} challenges done today`;
-  $("#challenge-slots").innerHTML = (challenges.rewards_today || []).map((reward, index) => `
-    <button class="challenge-card" type="button" data-challenge-slot="${index}" ${done >= cap ? "disabled" : ""}>
+  $("#challenge-slots").innerHTML = (challenges.rewards_today || []).map((reward, index) => {
+    const progressText = index < done ? "Completed" : "Ready";
+    return `
+    <button class="challenge-card ${rewardClass(reward)}" type="button" data-challenge-slot="${index}" ${done >= cap || index < done ? "disabled" : ""}>
       <span>Challenge ${index + 1}</span>
-      <strong>+${Number(reward || 0)} Coins</strong>
+      <strong><i aria-hidden="true"></i>+${Number(reward || 0)} Coins</strong>
+      <small>${progressText}</small>
     </button>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function spinRotationForSegment(segmentId) {
