@@ -589,132 +589,18 @@ svg {
   background: transparent;
 }
 
-#boost-count {
-  flex: 0 0 auto;
-  padding: 8px 11px;
+.spin-counter {
+  width: fit-content;
+  margin: 18px auto 18px;
+  padding: 8px 14px;
   border-radius: 999px;
-  color: #dfffe8;
-  background: rgba(0, 200, 83, 0.14);
+  color: #eaffef;
+  background: rgba(0, 200, 83, 0.12);
   border: 1px solid rgba(0, 200, 83, 0.22);
-  font-size: 12px;
-  font-weight: 900;
-  box-shadow: 0 0 18px rgba(0, 200, 83, 0.13);
-}
-
-.energy-meter {
-  margin-top: 15px;
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(26, 26, 46, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(16px);
-}
-
-.energy-meter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-  color: #e8e8e8;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.energy-meter-head span:last-child {
-  color: #bdbdbd;
-  text-align: right;
-}
-
-.energy-track {
-  height: 12px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
-}
-
-.energy-track span {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #00a844, #00c853, #8fffad);
-  box-shadow:
-    0 0 18px rgba(0, 200, 83, 0.62),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
-  transition: width 240ms ease;
-}
-
-.reward-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 9px auto 14px;
-}
-
-.reward-strip strong {
-  position: relative;
-  overflow: hidden;
-  min-width: 43px;
-  padding: 6px 9px;
-  border-radius: 999px;
-  color: #f2f2f2;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 11px;
+  box-shadow: 0 0 18px rgba(0, 200, 83, 0.12);
+  font-size: 14px;
   font-weight: 900;
   text-align: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.reward-strip strong[data-reward="10"] {
-  color: #b7ffcd;
-  border-color: rgba(0, 200, 83, 0.34);
-  background: rgba(0, 200, 83, 0.13);
-}
-
-.reward-strip strong[data-reward="0"] {
-  color: #d0d0d0;
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(70, 70, 78, 0.34);
-}
-
-.reward-strip strong[data-reward="20"] {
-  color: #c4dcff;
-  border-color: rgba(41, 121, 255, 0.34);
-  background: rgba(41, 121, 255, 0.15);
-}
-
-.reward-strip strong[data-reward="50"] {
-  color: #edccff;
-  border-color: rgba(179, 92, 255, 0.38);
-  background: rgba(179, 92, 255, 0.16);
-}
-
-.reward-strip strong[data-reward="100"] {
-  color: #ffd8ad;
-  border-color: rgba(255, 152, 0, 0.4);
-  background: rgba(255, 152, 0, 0.16);
-}
-
-.reward-strip strong[data-reward="500"] {
-  color: #fff4c2;
-  border-color: rgba(255, 215, 0, 0.5);
-  background: linear-gradient(135deg, rgba(255, 82, 82, 0.32), rgba(255, 215, 0, 0.17));
-  box-shadow: 0 0 18px rgba(255, 82, 82, 0.22);
-}
-
-.reward-strip strong[data-reward="500"]::after {
-  content: "";
-  position: absolute;
-  inset: -80% auto -80% -30%;
-  width: 45%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.42), transparent);
-  transform: rotate(22deg);
-  animation: shimmer 2.5s ease-in-out infinite;
 }
 
 .wheel {
@@ -723,7 +609,7 @@ svg {
   position: relative;
   display: grid;
   place-items: center;
-  margin: 17px auto 15px;
+  margin: 18px auto 22px;
   border-radius: 50%;
 }
 

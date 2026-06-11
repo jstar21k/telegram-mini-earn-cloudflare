@@ -346,24 +346,11 @@ function renderUser() {
 
 function renderEnergy() {
   const energy = state.energy || { energy: 0, boosts_today: 0, boost_daily_cap: ENERGY_BOOST_CAP, spins_today: 0 };
-  const energyLeft = Math.max(0, Math.min(ENERGY_MAX, Number(energy.energy || 0)));
   const spinsToday = Number(energy.spins_today || 0);
-  const boostCap = Number(energy.boost_daily_cap || ENERGY_BOOST_CAP);
-  const boostsToday = Number(energy.boosts_today || 0);
   if (energy.free_spin_used) markLocalFreeSpinUsed();
-  const freeAvailable = isFreeSpinAvailable();
   const capped = spinsToday >= SPIN_CAP;
-  $("#spin-status").textContent = capped
-    ? "Come back tomorrow 🌙"
-    : freeAvailable
-      ? "Free first spin ready. Then sponsor missions unlock spins."
-      : energyLeft > 0
-        ? "Server-picked rewards. Wheel lands on your prize."
-        : "Watch a sponsor mission to unlock your next spin.";
-  $("#energy-label").textContent = `⚡ ${energyLeft}/${ENERGY_MAX} Energy left`;
-  $("#spins-label").textContent = `🔄 ${spinsToday}/${SPIN_CAP} spins today`;
-  $("#energy-fill").style.width = `${(energyLeft / ENERGY_MAX) * 100}%`;
-  $("#boost-count").textContent = `🚀 ${boostsToday}/${boostCap} Boosts`;
+  const spinsLeft = Math.max(0, SPIN_CAP - spinsToday);
+  $("#spin-status").textContent = capped ? "Come back tomorrow 🌙" : `🎰 ${spinsLeft} spins left today`;
   $("#spin-button").disabled = capped;
   $("#spin-button").textContent = capped ? "🌙 COME BACK TOMORROW" : "🎰 SPIN NOW";
 }
@@ -790,7 +777,6 @@ function bindEvents() {
   $("#refresh-btn").addEventListener("click", () => refreshUser().catch((error) => showAlert(error.message)));
   $("#toast-action").addEventListener("click", () => document.querySelector(".ad-card:not([disabled])")?.click());
   $("#spin-button").addEventListener("click", spinWheel);
-  $("#boost-energy").addEventListener("click", boostEnergy);
   $("#challenge-slots").addEventListener("click", (event) => {
     const challenge = event.target.closest("button[data-challenge-slot]");
     if (challenge && !challenge.disabled) completeChallenge(challenge.dataset.challengeSlot);

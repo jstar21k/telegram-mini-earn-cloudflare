@@ -62,22 +62,7 @@
         </section>
 
         <section class="spin-panel" id="spin-tab">
-          <div class="panel-row">
-            <div>
-              <span>Spin Wheel</span>
-              <p id="spin-status">Each spin costs 1 energy.</p>
-            </div>
-            <strong id="boost-count">🚀 0/15 Boosts</strong>
-          </div>
-          <div class="energy-meter" aria-label="Energy and spins">
-            <div class="energy-meter-head">
-              <span id="energy-label">⚡ 10/10 Energy left</span>
-              <span id="spins-label">🔄 0/15 spins today</span>
-            </div>
-            <div class="energy-track">
-              <span id="energy-fill"></span>
-            </div>
-          </div>
+          <p class="spin-counter" id="spin-status">🎰 15 spins left today</p>
           <div class="wheel">
             <div class="wheel-pointer" aria-hidden="true"></div>
             <div class="wheel-rotor" id="spin-wheel">
@@ -94,19 +79,8 @@
               <strong id="spin-result">+?</strong>
             </div>
           </div>
-          <div class="reward-strip" id="spin-rewards" aria-label="Wheel reward legend">
-            <strong data-reward="500">+500</strong>
-            <strong data-reward="100">+100</strong>
-            <strong data-reward="5">+5</strong>
-            <strong data-reward="50">+50</strong>
-            <strong data-reward="0">0</strong>
-            <strong data-reward="20">+20</strong>
-            <strong data-reward="10">+10</strong>
-            <strong data-reward="5">+5</strong>
-          </div>
           <div class="spin-actions">
             <button class="primary-btn spin-now-btn" id="spin-button" type="button">🎰 SPIN NOW</button>
-            <button class="secondary-btn" id="boost-energy" type="button">⚡ Boost Energy</button>
           </div>
         </section>
       </section>
