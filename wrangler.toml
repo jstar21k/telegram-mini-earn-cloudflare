@@ -10,7 +10,7 @@ pages_build_output_dir = "frontend"
 [vars]
 MINI_APP_URL = "https://telegram-mini-earn.pages.dev"
 BOT_USERNAME = "Watch_and3arn_bot"
-ADSGRAM_BLOCK_ID = "int-34777"
+ADSGRAM_BLOCK_ID = "int-34822"
 MONETAG_ZONE_ID = "11129538"
 
 [[d1_databases]]
