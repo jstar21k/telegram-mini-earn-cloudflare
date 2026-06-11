@@ -39,10 +39,20 @@ NETWORKS = {"adsgram", "monetag"}
 ENERGY_MAX = 10
 ENERGY_BOOST_DAILY_CAP = 15
 ENERGY_PER_BOOST = 2
+SPIN_DAILY_CAP = 15
 CHALLENGE_DAILY_CAP = 15
 CHALLENGE_REWARDS = [5, 10, 15, 20]
-CHALLENGE_SLOTS = 3
-SPIN_REWARDS = [5, 10, 15, 20]
+CHALLENGE_SLOTS = 15
+SPIN_SEGMENTS = [
+    {"id": 1, "reward": 5, "weight": 30.0},
+    {"id": 2, "reward": 5, "weight": 30.0},
+    {"id": 3, "reward": 10, "weight": 20.0},
+    {"id": 4, "reward": 20, "weight": 10.0},
+    {"id": 5, "reward": 20, "weight": 5.0},
+    {"id": 6, "reward": 50, "weight": 3.0},
+    {"id": 7, "reward": 100, "weight": 1.5},
+    {"id": 8, "reward": 500, "weight": 0.5},
+]
 
 
 class Default(WorkerEntrypoint):
@@ -92,10 +102,12 @@ class TaskVerifyBody(BaseModel):
 
 class EnergyActionBody(BaseModel):
     tg_id: int
+    token: str | None = None
 
 
 class ChallengeCompleteBody(BaseModel):
     tg_id: int
+    token: str
     slot: int = Field(ge=0, lt=CHALLENGE_SLOTS)
 
 
@@ -160,91 +172,21 @@ def db_from_request(req: Request):
     return env.DB
 
 
-def kv_from_request(req: Request):
-    env = req.scope["env"]
-    kv = getattr(env, "MISSION_KV", None)
-    if kv is None:
-        raise HTTPException(status_code=500, detail="Mission KV storage is not configured")
-    return kv
-
-
-async def kv_get_json(kv: Any, key: str) -> dict[str, Any] | None:
-    value = to_py(await kv.get(key))
-    if not value:
-        return None
-    if isinstance(value, dict):
-        return value
-    return json.loads(str(value))
-
-
-async def kv_put_json(kv: Any, key: str, value: dict[str, Any]) -> None:
-    await kv.put(key, json.dumps(value, separators=(",", ":")))
-
-
 def daily_rewards_for(tg_id: int, date: str) -> list[int]:
     seed = int(hashlib.sha256(f"{tg_id}:{date}:challenges".encode()).hexdigest()[:12], 16)
     rng = random.Random(seed)
     return [rng.choice(CHALLENGE_REWARDS) for _ in range(CHALLENGE_SLOTS)]
 
 
-async def energy_state(kv: Any, tg_id: int) -> dict[str, Any]:
-    key = f"energy:{tg_id}"
-    date = today_ist()
-    state = await kv_get_json(kv, key) or {"energy": ENERGY_MAX, "boosts_today": 0, "reset_date": date}
-    if state.get("reset_date") != date:
-        state["boosts_today"] = 0
-        state["reset_date"] = date
-        await kv_put_json(kv, key, state)
-    state["energy"] = max(0, min(ENERGY_MAX, int(state.get("energy") or 0)))
-    state["boosts_today"] = int(state.get("boosts_today") or 0)
-    return state
-
-
-async def save_energy_state(kv: Any, tg_id: int, state: dict[str, Any]) -> None:
-    await kv_put_json(kv, f"energy:{tg_id}", state)
-
-
-async def challenge_state(kv: Any, tg_id: int) -> dict[str, Any]:
-    key = f"challenges:{tg_id}"
-    date = today_ist()
-    state = await kv_get_json(kv, key) or {
-        "done_today": 0,
-        "reset_date": date,
-        "rewards_today": daily_rewards_for(tg_id, date),
-    }
-    if state.get("reset_date") != date:
-        state = {
-            "done_today": 0,
-            "reset_date": date,
-            "rewards_today": daily_rewards_for(tg_id, date),
-        }
-        await kv_put_json(kv, key, state)
-    rewards = state.get("rewards_today")
-    if not isinstance(rewards, list) or len(rewards) != CHALLENGE_SLOTS:
-        state["rewards_today"] = daily_rewards_for(tg_id, date)
-        await kv_put_json(kv, key, state)
-    state["done_today"] = int(state.get("done_today") or 0)
-    return state
-
-
-async def save_challenge_state(kv: Any, tg_id: int, state: dict[str, Any]) -> None:
-    await kv_put_json(kv, f"challenges:{tg_id}", state)
-
-
-async def spin_state(kv: Any, tg_id: int) -> dict[str, Any]:
-    key = f"spin:{tg_id}"
-    date = today_ist()
-    state = await kv_get_json(kv, key) or {"spins_today": 0, "reset_date": date}
-    if state.get("reset_date") != date:
-        state["spins_today"] = 0
-        state["reset_date"] = date
-        await kv_put_json(kv, key, state)
-    state["spins_today"] = int(state.get("spins_today") or 0)
-    return state
-
-
-async def save_spin_state(kv: Any, tg_id: int, state: dict[str, Any]) -> None:
-    await kv_put_json(kv, f"spin:{tg_id}", state)
+def pick_spin_segment() -> dict[str, Any]:
+    total = sum(float(segment["weight"]) for segment in SPIN_SEGMENTS)
+    roll = random.uniform(0, total)
+    upto = 0.0
+    for segment in SPIN_SEGMENTS:
+        upto += float(segment["weight"])
+        if roll <= upto:
+            return segment
+    return SPIN_SEGMENTS[-1]
 
 
 async def d1_first(db: Any, sql: str, *params: Any) -> dict[str, Any] | None:
@@ -347,16 +289,37 @@ async def update_level(db: Any, tg_id: int) -> str:
     return level
 
 
+async def reset_daily_state(db: Any, user: dict[str, Any]) -> dict[str, Any]:
+    date = today_ist()
+    updates: list[str] = []
+    params: list[Any] = []
+    if user.get("energy_reset_date") != date:
+        updates.extend(["energy = ?", "boosts_today = ?", "spins_today = ?", "energy_reset_date = ?", "spin_reset_date = ?"])
+        params.extend([ENERGY_MAX, 0, 0, date, date])
+    elif user.get("spin_reset_date") != date:
+        updates.extend(["spins_today = ?", "spin_reset_date = ?"])
+        params.extend([0, date])
+    if user.get("challenges_reset_date") != date:
+        updates.extend(["challenges_today = ?", "challenges_reset_date = ?"])
+        params.extend([0, date])
+    if updates:
+        await d1_run(db, f"UPDATE users SET {', '.join(updates)} WHERE tg_id = ?", *params, user["tg_id"])
+        refreshed = await d1_first(db, "SELECT * FROM users WHERE tg_id = ?", user["tg_id"])
+        return refreshed or user
+    return user
+
+
 async def get_user_or_404(db: Any, tg_id: int) -> dict[str, Any]:
     user = await d1_first(db, "SELECT * FROM users WHERE tg_id = ?", tg_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if int(user.get("is_banned") or 0):
         raise HTTPException(status_code=403, detail="User is banned")
-    return user
+    return await reset_daily_state(db, user)
 
 
 async def serialize_user(db: Any, user: dict[str, Any]) -> dict[str, Any]:
+    user = await reset_daily_state(db, user)
     date = today_ist()
     counts = await d1_all(
         db,
@@ -538,6 +501,28 @@ async def mark_token_completed(db: Any, token: str, network: str) -> dict[str, A
         iso_now(),
         token,
     )
+    return row
+
+
+async def consume_completed_token(db: Any, tg_id: int, network: str, token: str | None) -> dict[str, Any]:
+    if not token:
+        raise HTTPException(status_code=400, detail="Missing ad token")
+    row = await d1_first(
+        db,
+        "SELECT * FROM ad_tokens WHERE token = ? AND tg_id = ? AND network = ?",
+        token,
+        tg_id,
+        network,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Token not found")
+    if int(row.get("used") or 0):
+        raise HTTPException(status_code=409, detail="Token already used")
+    if not int(row.get("completed") or 0):
+        raise HTTPException(status_code=400, detail="Ad callback not completed")
+    if row.get("expires_at") < iso_now():
+        raise HTTPException(status_code=410, detail="Token expired")
+    await d1_run(db, "UPDATE ad_tokens SET used = 1, used_at = ? WHERE token = ?", iso_now(), token)
     return row
 
 
@@ -796,59 +781,79 @@ async def list_tasks(req: Request, tg_id: int | None = None):
 
 @app.get("/api/energy/{tg_id}")
 async def api_energy(tg_id: int, req: Request):
-    await get_user_or_404(db_from_request(req), tg_id)
-    kv = kv_from_request(req)
-    state = await energy_state(kv, tg_id)
-    spin = await spin_state(kv, tg_id)
+    user = await get_user_or_404(db_from_request(req), tg_id)
+    energy = max(0, min(ENERGY_MAX, int(user.get("energy") or ENERGY_MAX)))
+    boosts_today = int(user.get("boosts_today") or 0)
+    spins_today = int(user.get("spins_today") or 0)
     return {
-        **state,
+        "energy": energy,
+        "boosts_today": boosts_today,
+        "reset_date": user.get("energy_reset_date") or today_ist(),
         "max_energy": ENERGY_MAX,
         "boost_daily_cap": ENERGY_BOOST_DAILY_CAP,
-        "spins_today": spin["spins_today"],
+        "boosts_left": max(0, ENERGY_BOOST_DAILY_CAP - boosts_today),
+        "spins_today": spins_today,
+        "spin_daily_cap": SPIN_DAILY_CAP,
+        "spins_left": max(0, SPIN_DAILY_CAP - spins_today),
     }
 
 
-@app.post("/api/energy/boost")
+@app.post("/api/energy-boost")
 async def api_energy_boost(body: EnergyActionBody, req: Request):
-    await get_user_or_404(db_from_request(req), body.tg_id)
-    kv = kv_from_request(req)
-    state = await energy_state(kv, body.tg_id)
-    if state["boosts_today"] >= ENERGY_BOOST_DAILY_CAP:
+    db = db_from_request(req)
+    user = await get_user_or_404(db, body.tg_id)
+    boosts_today = int(user.get("boosts_today") or 0)
+    if boosts_today >= ENERGY_BOOST_DAILY_CAP:
         raise HTTPException(status_code=429, detail="Max boosts reached for today")
-    state["energy"] = min(ENERGY_MAX, state["energy"] + ENERGY_PER_BOOST)
-    state["boosts_today"] += 1
-    await save_energy_state(kv, body.tg_id, state)
+    await consume_completed_token(db, body.tg_id, "adsgram", body.token)
+    new_energy = min(ENERGY_MAX, int(user.get("energy") or 0) + ENERGY_PER_BOOST)
+    boosts_today += 1
+    await d1_run(
+        db,
+        "UPDATE users SET energy = ?, boosts_today = ?, energy_reset_date = ? WHERE tg_id = ?",
+        new_energy,
+        boosts_today,
+        today_ist(),
+        body.tg_id,
+    )
     return {
         "success": True,
-        **state,
-        "max_energy": ENERGY_MAX,
-        "boost_daily_cap": ENERGY_BOOST_DAILY_CAP,
+        "new_energy": new_energy,
+        "energy": new_energy,
+        "boosts_today": boosts_today,
+        "boosts_left": max(0, ENERGY_BOOST_DAILY_CAP - boosts_today),
     }
 
 
 @app.post("/api/spin")
 async def api_spin(body: EnergyActionBody, req: Request):
     db = db_from_request(req)
-    await get_user_or_404(db, body.tg_id)
-    kv = kv_from_request(req)
-    state = await energy_state(kv, body.tg_id)
-    if state["energy"] <= 0:
+    user = await get_user_or_404(db, body.tg_id)
+    energy = int(user.get("energy") or 0)
+    spins_today = int(user.get("spins_today") or 0)
+    if energy <= 0:
         raise HTTPException(status_code=400, detail="No energy left. Boost energy to spin again.")
-    state["energy"] -= 1
-    await save_energy_state(kv, body.tg_id, state)
-    spin = await spin_state(kv, body.tg_id)
-    spin["spins_today"] += 1
-    await save_spin_state(kv, body.tg_id, spin)
-    reward = random.choice(SPIN_REWARDS)
+    if spins_today >= SPIN_DAILY_CAP:
+        raise HTTPException(status_code=429, detail="Daily spin limit reached")
+    segment = pick_spin_segment()
+    reward = int(segment["reward"])
     reward_paise = reward * 100
+    energy -= 1
+    spins_today += 1
     await d1_run(
         db,
         """
         UPDATE users
-        SET balance_paise = balance_paise + ?,
+        SET energy = ?,
+            spins_today = ?,
+            spin_reset_date = ?,
+            balance_paise = balance_paise + ?,
             total_earned_paise = total_earned_paise + ?
         WHERE tg_id = ?
         """,
+        energy,
+        spins_today,
+        today_ist(),
         reward_paise,
         reward_paise,
         body.tg_id,
@@ -858,43 +863,59 @@ async def api_spin(body: EnergyActionBody, req: Request):
     user = await get_user_or_404(db, body.tg_id)
     return {
         "success": True,
+        "prize_coins": reward,
         "reward": reward,
+        "segment_id": int(segment["id"]),
         "new_balance": paise_to_rupees(user["balance_paise"]),
         "level": level,
-        **state,
+        "energy_left": energy,
+        "energy": energy,
         "max_energy": ENERGY_MAX,
-        "spins_today": spin["spins_today"],
+        "spins_today": spins_today,
+        "spins_left": max(0, SPIN_DAILY_CAP - spins_today),
     }
 
 
 @app.get("/api/challenges/{tg_id}")
 async def api_challenges(tg_id: int, req: Request):
-    await get_user_or_404(db_from_request(req), tg_id)
-    state = await challenge_state(kv_from_request(req), tg_id)
-    return {**state, "daily_cap": CHALLENGE_DAILY_CAP}
+    user = await get_user_or_404(db_from_request(req), tg_id)
+    done_today = int(user.get("challenges_today") or 0)
+    date = user.get("challenges_reset_date") or today_ist()
+    return {
+        "done_today": done_today,
+        "reset_date": date,
+        "rewards_today": daily_rewards_for(tg_id, date),
+        "daily_cap": CHALLENGE_DAILY_CAP,
+        "challenges_left": max(0, CHALLENGE_DAILY_CAP - done_today),
+    }
 
 
-@app.post("/api/challenges/complete")
+@app.post("/api/challenge-complete")
 async def api_challenge_complete(body: ChallengeCompleteBody, req: Request):
     db = db_from_request(req)
-    await get_user_or_404(db, body.tg_id)
-    kv = kv_from_request(req)
-    state = await challenge_state(kv, body.tg_id)
-    if state["done_today"] >= CHALLENGE_DAILY_CAP:
+    user = await get_user_or_404(db, body.tg_id)
+    done_today = int(user.get("challenges_today") or 0)
+    if done_today >= CHALLENGE_DAILY_CAP:
         raise HTTPException(status_code=429, detail="Come back tomorrow!")
+    await consume_completed_token(db, body.tg_id, "monetag", body.token)
 
-    reward = int(state["rewards_today"][body.slot])
+    date = user.get("challenges_reset_date") or today_ist()
+    rewards_today = daily_rewards_for(body.tg_id, date)
+    reward = int(rewards_today[body.slot])
     reward_paise = reward * 100
-    state["done_today"] += 1
-    await save_challenge_state(kv, body.tg_id, state)
+    done_today += 1
     await d1_run(
         db,
         """
         UPDATE users
-        SET balance_paise = balance_paise + ?,
+        SET challenges_today = ?,
+            challenges_reset_date = ?,
+            balance_paise = balance_paise + ?,
             total_earned_paise = total_earned_paise + ?
         WHERE tg_id = ?
         """,
+        done_today,
+        today_ist(),
         reward_paise,
         reward_paise,
         body.tg_id,
@@ -904,11 +925,15 @@ async def api_challenge_complete(body: ChallengeCompleteBody, req: Request):
     user = await get_user_or_404(db, body.tg_id)
     return {
         "success": True,
+        "coins_earned": reward,
         "reward": reward,
         "new_balance": paise_to_rupees(user["balance_paise"]),
         "level": level,
-        **state,
+        "done_today": done_today,
+        "reset_date": today_ist(),
+        "rewards_today": rewards_today,
         "daily_cap": CHALLENGE_DAILY_CAP,
+        "challenges_left": max(0, CHALLENGE_DAILY_CAP - done_today),
     }
 
 

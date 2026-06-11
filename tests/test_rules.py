@@ -45,6 +45,27 @@ def test_active_ad_networks():
     assert worker_main.NETWORKS == {"adsgram", "monetag"}
 
 
+def test_spin_segments_match_config():
+    assert worker_main.SPIN_SEGMENTS == [
+        {"id": 1, "reward": 5, "weight": 30.0},
+        {"id": 2, "reward": 5, "weight": 30.0},
+        {"id": 3, "reward": 10, "weight": 20.0},
+        {"id": 4, "reward": 20, "weight": 10.0},
+        {"id": 5, "reward": 20, "weight": 5.0},
+        {"id": 6, "reward": 50, "weight": 3.0},
+        {"id": 7, "reward": 100, "weight": 1.5},
+        {"id": 8, "reward": 500, "weight": 0.5},
+    ]
+
+
+def test_spin_and_challenge_limits():
+    assert worker_main.ENERGY_MAX == 10
+    assert worker_main.ENERGY_BOOST_DAILY_CAP == 15
+    assert worker_main.SPIN_DAILY_CAP == 15
+    assert worker_main.CHALLENGE_DAILY_CAP == 15
+    assert worker_main.CHALLENGE_SLOTS == 15
+
+
 def test_withdrawal_callback_data():
     assert worker_main.withdrawal_action_callback("approve", 42) == "withdraw:approve:42"
     assert worker_main.withdrawal_action_callback("reject", 42) == "withdraw:reject:42"

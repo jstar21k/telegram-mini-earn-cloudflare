@@ -387,8 +387,8 @@ svg {
 }
 
 .reward-strip {
-  display: grid;
-  grid-template-columns: 1fr repeat(4, auto);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 14px;
@@ -399,6 +399,7 @@ svg {
 }
 
 .reward-strip span {
+  flex: 1 0 100%;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
@@ -415,28 +416,72 @@ svg {
 .wheel {
   width: min(220px, 72vw);
   aspect-ratio: 1;
+  position: relative;
   display: grid;
   place-items: center;
   margin: 20px auto;
+}
+
+.wheel-rotor {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
   border-radius: 50%;
   color: var(--accent);
   background:
-    conic-gradient(from 12deg, rgba(0, 200, 83, 0.95), #1a1a1a 0 25%, rgba(0, 200, 83, 0.36) 0 50%, #101010 0 75%, rgba(0, 200, 83, 0.7) 0),
+    conic-gradient(from 0deg,
+      #00c853 0 45deg,
+      #13a85a 45deg 90deg,
+      #2979ff 90deg 135deg,
+      #ffd54f 135deg 180deg,
+      #fdd835 180deg 225deg,
+      #ff5252 225deg 270deg,
+      #ff9800 270deg 315deg,
+      #9c27b0 315deg 360deg),
     var(--surface);
   border: 8px solid rgba(255, 255, 255, 0.08);
-  transition: transform 900ms cubic-bezier(0.16, 0.84, 0.22, 1);
+  transition: transform 1200ms cubic-bezier(0.16, 0.84, 0.22, 1);
 }
 
-.wheel span {
+.wheel-pointer {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  z-index: 3;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 12px solid transparent;
+  border-right: 12px solid transparent;
+  border-top: 22px solid var(--accent);
+  filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.5));
+}
+
+.wheel-prizes span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42px;
+  margin: -10px 0 0 -21px;
+  transform: rotate(calc(var(--i) * 45deg + 22.5deg)) translateY(-78px) rotate(calc(-1 * (var(--i) * 45deg + 22.5deg)));
+  color: #08110c;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.wheel-rotor > strong {
   width: 64px;
   height: 64px;
   display: grid;
   place-items: center;
-  margin: 0;
   border-radius: 50%;
   color: #05150b;
   background: var(--accent);
   font-size: 19px;
+  z-index: 2;
 }
 
 .spin-actions {

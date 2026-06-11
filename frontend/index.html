@@ -60,16 +60,33 @@
           <div class="reward-strip" id="spin-rewards">
             <span>Rewards</span>
             <strong>+5</strong>
+            <strong>+5</strong>
             <strong>+10</strong>
-            <strong>+15</strong>
             <strong>+20</strong>
+            <strong>+20</strong>
+            <strong>+50</strong>
+            <strong>+100</strong>
+            <strong>+500</strong>
           </div>
           <div class="energy-dots" id="energy-dots" aria-label="Energy"></div>
-          <div class="wheel" id="spin-wheel">
-            <span id="spin-result">+?</span>
+          <div class="wheel">
+            <div class="wheel-pointer" aria-hidden="true"></div>
+            <div class="wheel-rotor" id="spin-wheel">
+              <div class="wheel-prizes" aria-hidden="true">
+                <span style="--i: 0">+5</span>
+                <span style="--i: 1">+5</span>
+                <span style="--i: 2">+10</span>
+                <span style="--i: 3">+20</span>
+                <span style="--i: 4">+20</span>
+                <span style="--i: 5">+50</span>
+                <span style="--i: 6">+100</span>
+                <span style="--i: 7">+500</span>
+              </div>
+              <strong id="spin-result">+?</strong>
+            </div>
           </div>
           <div class="spin-actions">
-            <button class="primary-btn" id="spin-button" type="button">Spin</button>
+            <button class="primary-btn" id="spin-button" type="button">🎰 Spin Now</button>
             <button class="secondary-btn" id="boost-energy" type="button">⚡ Boost Energy</button>
           </div>
         </section>
@@ -77,10 +94,16 @@
 
       <section class="screen" id="challenge-screen" data-screen="challenge">
         <header class="section-head">
-          <h2>Daily Challenge</h2>
+          <h2>Quests</h2>
           <p id="challenge-progress">0/15 challenges done today</p>
         </header>
         <section class="daily-challenges">
+          <div class="panel-row">
+            <div>
+              <span>Daily Challenges</span>
+              <p>Start challenges to earn bonus coins.</p>
+            </div>
+          </div>
           <div class="challenge-slots" id="challenge-slots"></div>
         </section>
         <section class="home-task-panel">
@@ -151,11 +174,11 @@
     <nav class="bottom-nav">
       <button class="nav-btn active" data-target="home">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20H5v-9.5Z"/><path d="M9 20v-6h6v6"/></svg>
-        Home
+        🎰 Spin
       </button>
       <button class="nav-btn" data-target="challenge">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19.1l1-5.8-4.2-4.1 5.9-.9L12 3Z"/></svg>
-        Daily
+        Quests
       </button>
       <button class="nav-btn" data-target="refer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M3 21a9 9 0 0 1 18 0"/><path d="M18 8h3M19.5 6.5v3"/></svg>

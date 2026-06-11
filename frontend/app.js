@@ -6,8 +6,18 @@ const adControllers = {};
 const AD_REWARD_AMOUNT = 5;
 const ENERGY_MAX = 10;
 const ENERGY_BOOST_CAP = 15;
+const SPIN_CAP = 15;
 const CHALLENGE_CAP = 15;
-const SPIN_REWARDS = [5, 10, 15, 20];
+const SPIN_SEGMENTS = [
+  { id: 1, reward: 5 },
+  { id: 2, reward: 5 },
+  { id: 3, reward: 10 },
+  { id: 4, reward: 20 },
+  { id: 5, reward: 20 },
+  { id: 6, reward: 50 },
+  { id: 7, reward: 100 },
+  { id: 8, reward: 500 },
+];
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -61,11 +71,12 @@ const mockState = {
     max_energy: 10,
     boost_daily_cap: 15,
     spins_today: 0,
+    spins_left: 15,
   },
   challenges: {
     done_today: 0,
     reset_date: new Date().toISOString().slice(0, 10),
-    rewards_today: [5, 10, 15],
+    rewards_today: [5, 10, 15, 20, 5, 10, 15, 20, 5, 10, 15, 20, 5, 10, 15],
     daily_cap: 15,
   },
   user: null,
@@ -155,31 +166,34 @@ async function mockApi(path, options = {}) {
   if (path.startsWith("/api/energy/") && options.method !== "POST") {
     return structuredClone(mockState.energy);
   }
-  if (path === "/api/energy/boost") {
+  if (path === "/api/energy-boost") {
     if (mockState.energy.boosts_today >= ENERGY_BOOST_CAP) throw new Error("Max boosts reached for today");
     mockState.energy.energy = Math.min(ENERGY_MAX, mockState.energy.energy + 2);
     mockState.energy.boosts_today += 1;
-    return structuredClone(mockState.energy);
+    return { success: true, new_energy: mockState.energy.energy, boosts_left: ENERGY_BOOST_CAP - mockState.energy.boosts_today, ...structuredClone(mockState.energy) };
   }
   if (path === "/api/spin") {
     if (mockState.energy.energy <= 0) throw new Error("No energy left. Boost energy to spin again.");
-    const reward = SPIN_REWARDS[Math.floor(Math.random() * SPIN_REWARDS.length)];
+    if (mockState.energy.spins_today >= SPIN_CAP) throw new Error("Daily spin limit reached");
+    const segment = SPIN_SEGMENTS[Math.floor(Math.random() * SPIN_SEGMENTS.length)];
+    const reward = segment.reward;
     mockState.energy.energy -= 1;
     mockState.energy.spins_today += 1;
+    mockState.energy.spins_left = SPIN_CAP - mockState.energy.spins_today;
     mockState.user.balance += reward;
     mockState.user.total_earned += reward;
-    return { success: true, reward, new_balance: mockState.user.balance, ...structuredClone(mockState.energy) };
+    return { success: true, prize_coins: reward, reward, segment_id: segment.id, new_balance: mockState.user.balance, energy_left: mockState.energy.energy, ...structuredClone(mockState.energy) };
   }
   if (path.startsWith("/api/challenges/") && options.method !== "POST") {
     return structuredClone(mockState.challenges);
   }
-  if (path === "/api/challenges/complete") {
+  if (path === "/api/challenge-complete") {
     if (mockState.challenges.done_today >= CHALLENGE_CAP) throw new Error("Come back tomorrow!");
     const reward = mockState.challenges.rewards_today[body.slot] || 5;
     mockState.challenges.done_today += 1;
     mockState.user.balance += reward;
     mockState.user.total_earned += reward;
-    return { success: true, reward, new_balance: mockState.user.balance, ...structuredClone(mockState.challenges) };
+    return { success: true, coins_earned: reward, reward, new_balance: mockState.user.balance, challenges_left: CHALLENGE_CAP - mockState.challenges.done_today, ...structuredClone(mockState.challenges) };
   }
   if (path === "/api/withdraw") {
     if (body.amount < 400) throw new Error("Minimum withdrawal is ₹400");
@@ -277,6 +291,7 @@ function renderEnergy() {
   )).join("");
   $("#spin-status").textContent = `${Number(energy.energy || 0)}/${ENERGY_MAX} energy · ${Number(energy.spins_today || 0)} spins today`;
   $("#boost-count").textContent = `${Number(energy.boosts_today || 0)}/${Number(energy.boost_daily_cap || ENERGY_BOOST_CAP)} boosts`;
+  $("#spin-button").disabled = Number(energy.energy || 0) <= 0 || Number(energy.spins_today || 0) >= SPIN_CAP;
 }
 
 function renderChallenges() {
@@ -286,10 +301,16 @@ function renderChallenges() {
   $("#challenge-progress").textContent = done >= cap ? "Come back tomorrow!" : `${done}/${cap} challenges done today`;
   $("#challenge-slots").innerHTML = (challenges.rewards_today || []).map((reward, index) => `
     <button class="challenge-card" type="button" data-challenge-slot="${index}" ${done >= cap ? "disabled" : ""}>
-      <span>Slot ${index + 1}</span>
+      <span>Challenge ${index + 1}</span>
       <strong>+${Number(reward || 0)} Coins</strong>
     </button>
   `).join("");
+}
+
+function spinRotationForSegment(segmentId) {
+  const segmentSize = 360 / SPIN_SEGMENTS.length;
+  const centerAngle = (Number(segmentId || 1) - 0.5) * segmentSize;
+  return state.wheelTurns * 1800 + (360 - centerAngle);
 }
 
 function switchScreen(screen, options = {}) {
@@ -430,10 +451,10 @@ async function spinWheel() {
     state.energy = result;
     renderEnergy();
     state.wheelTurns += 1;
-    $("#spin-wheel").style.transform = `rotate(${state.wheelTurns * 720 + 45}deg)`;
-    $("#spin-result").textContent = `+${result.reward}`;
+    $("#spin-wheel").style.transform = `rotate(${spinRotationForSegment(result.segment_id)}deg)`;
+    $("#spin-result").textContent = `+${result.prize_coins}`;
     await refreshUser();
-    showToast(`🎯 Spin Reward! +${result.reward} Coins`);
+    showToast(`🎰 ${result.prize_coins} Coins Won!`);
   } catch (error) {
     showAlert(error.message);
   }
@@ -446,18 +467,25 @@ async function boostEnergy() {
       return;
     }
     showLoader(true, "Charging energy...");
+    const tokenData = await api("/api/ad-token", {
+      method: "POST",
+      body: JSON.stringify({ tg_id: tgUser.id, network: "adsgram" }),
+    });
     if (!OFFLINE_DEMO) {
       await showAdsgramAd();
     } else {
       await new Promise((resolve) => setTimeout(resolve, 900));
     }
-    const result = await api("/api/energy/boost", {
+    if (DEMO_AD_CALLBACKS) {
+      await runDemoCallback("adsgram", tokenData.token);
+    }
+    const result = await api("/api/energy-boost", {
       method: "POST",
-      body: JSON.stringify({ tg_id: tgUser.id }),
+      body: JSON.stringify({ tg_id: tgUser.id, token: tokenData.token }),
     });
     state.energy = result;
     renderEnergy();
-    showToast("⚡ +2 Energy Added!");
+    showToast("+2 Energy Added!");
   } catch (error) {
     showAlert(error.message);
   } finally {
@@ -472,19 +500,26 @@ async function completeChallenge(slot) {
       return;
     }
     showLoader(true, "Opening challenge...");
+    const tokenData = await api("/api/ad-token", {
+      method: "POST",
+      body: JSON.stringify({ tg_id: tgUser.id, network: "monetag" }),
+    });
     if (!OFFLINE_DEMO) {
-      await showMonetagAd(`challenge-${tgUser.id}-${Date.now()}`, "daily_challenge");
+      await showMonetagAd(tokenData.token, "daily_challenge");
     } else {
       await new Promise((resolve) => setTimeout(resolve, 900));
     }
-    const result = await api("/api/challenges/complete", {
+    if (DEMO_AD_CALLBACKS) {
+      await runDemoCallback("monetag", tokenData.token);
+    }
+    const result = await api("/api/challenge-complete", {
       method: "POST",
-      body: JSON.stringify({ tg_id: tgUser.id, slot: Number(slot) }),
+      body: JSON.stringify({ tg_id: tgUser.id, token: tokenData.token, slot: Number(slot) }),
     });
     state.challenges = result;
     renderChallenges();
     await refreshUser();
-    showToast(`🎯 Challenge Complete! +${result.reward} Coins`);
+    showToast(`🎯 Challenge Complete! +${result.coins_earned} Coins`);
   } catch (error) {
     showAlert(error.message);
   } finally {
