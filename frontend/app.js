@@ -479,25 +479,13 @@ function normalizeAngle(angle) {
   return ((angle % 360) + 360) % 360;
 }
 
-function easeOutQuart(t) {
-  return 1 - Math.pow(1 - t, 4);
-}
-
-function easeInCubic(t) {
-  return t * t * t;
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 function baseRotationForSegment(segmentId) {
   const centerAngle = (Number(segmentId || 1) - 0.5) * SEGMENT_SIZE;
   return 360 - centerAngle;
-}
-
-function nextRotationForSegment(segmentId, minimumTurns = 4) {
-  const current = Number(state.wheelRotation || 0);
-  const base = baseRotationForSegment(segmentId);
-  let target = base + Math.ceil((current + minimumTurns * 360 - base) / 360) * 360;
-  while (target <= current + minimumTurns * 360 - 1) target += 360;
-  return target;
 }
 
 function visualSegmentForResult(result) {
@@ -509,13 +497,6 @@ function visualSegmentForResult(result) {
   if (reward === 10) return 7;
   if (reward === 0) return 5;
   return Number(result.segment_id) === 8 ? 8 : 2;
-}
-
-function teaseSegmentFor(result) {
-  const reward = Number(result.prize_coins ?? result.reward ?? 0);
-  if (reward === 0) return 6;
-  if (reward === 5) return 3;
-  return null;
 }
 
 function wait(ms) {
@@ -545,35 +526,28 @@ function setWheelRotation(rotation) {
   wheel.style.transform = `rotate(${rotation}deg)`;
 }
 
-function animateRotationFrame(targetRotation, duration, options = {}) {
+function finalRotationForSegment(segmentId) {
+  const current = Number(state.wheelRotation || 0);
+  const base = baseRotationForSegment(segmentId);
+  const nearMissBase = base - SEGMENT_SIZE;
+  const deltaToNearMiss = normalizeAngle(nearMissBase - current);
+  return current + 5 * 360 + deltaToNearMiss + SEGMENT_SIZE;
+}
+
+function animateRotationFrame(targetRotation, duration = 5000) {
   const wheel = $("#spin-wheel");
   const startRotation = Number(state.wheelRotation || 0);
   const total = targetRotation - startRotation;
-  const launchMs = options.creep ? 0 : 500;
-  const fullSpeedMs = options.creep ? 0 : 2500;
-  const decelMs = duration - launchMs - fullSpeedMs;
-  const launchDelta = options.creep ? 0 : Math.min(210, total * 0.1);
-  const fullSpeedDelta = options.creep ? 0 : Math.min(1800, total * 0.62);
-  const decelDelta = total - launchDelta - fullSpeedDelta;
   const startTime = performance.now();
 
   wheel.style.transition = "none";
-  if (!options.creep) wheel.classList.add("motion-blur");
+  wheel.classList.add("motion-blur");
   return new Promise((resolve) => {
     function frame(now) {
       const elapsed = Math.min(now - startTime, duration);
-      let rotation;
-      if (options.creep) {
-        rotation = startRotation + total * easeOutQuart(elapsed / duration);
-      } else if (elapsed < launchMs) {
-        rotation = startRotation + launchDelta * easeInCubic(elapsed / launchMs);
-      } else if (elapsed < launchMs + fullSpeedMs) {
-        rotation = startRotation + launchDelta + fullSpeedDelta * ((elapsed - launchMs) / fullSpeedMs);
-      } else {
-        wheel.classList.remove("motion-blur");
-        const t = Math.min((elapsed - launchMs - fullSpeedMs) / decelMs, 1);
-        rotation = startRotation + launchDelta + fullSpeedDelta + decelDelta * easeOutQuart(t);
-      }
+      const t = Math.min(elapsed / duration, 1);
+      const rotation = startRotation + total * easeOutCubic(t);
+      if (t > 0.72) wheel.classList.remove("motion-blur");
       setWheelRotation(rotation);
       if (elapsed < duration) {
         requestAnimationFrame(frame);
@@ -589,39 +563,30 @@ function animateRotationFrame(targetRotation, duration, options = {}) {
 
 async function bounceStop(rotation) {
   const pointer = $(".wheel-pointer");
-  setWheelRotation(rotation - 3);
-  await wait(90);
-  setWheelRotation(rotation + 1.4);
-  await wait(80);
+  const wheel = $("#spin-wheel");
+  wheel.style.transition = "transform 150ms ease-out";
+  setWheelRotation(rotation - 2);
+  await wait(150);
+  wheel.style.transition = "transform 100ms ease-out";
+  setWheelRotation(rotation + 2);
+  await wait(100);
+  wheel.style.transition = "transform 90ms ease-out";
   setWheelRotation(rotation);
+  await wait(90);
+  wheel.style.transition = "none";
   pointer.classList.add("bounce");
   setTimeout(() => pointer.classList.remove("bounce"), 320);
-  await wait(120);
 }
 
 async function animateWheelResult(result) {
   const wheel = $("#spin-wheel");
   const actualSegment = visualSegmentForResult(result);
-  const teaseSegment = teaseSegmentFor(result);
   $("#spin-result-toast").classList.remove("show");
-  if (teaseSegment) {
-    wheel.classList.add("tension");
-    const teaseTarget = nextRotationForSegment(teaseSegment, 7);
-    await animateRotationFrame(teaseTarget, 5000);
-    await wait(600);
-    wheel.classList.add("slip");
-    const directForward = baseRotationForSegment(actualSegment) - baseRotationForSegment(teaseSegment);
-    const creepDistance = directForward > 0 ? directForward : SEGMENT_SIZE;
-    await animateRotationFrame(teaseTarget + creepDistance, 780, { creep: true });
-    await bounceStop(teaseTarget + creepDistance);
-    wheel.classList.remove("tension", "slip");
-  } else {
-    wheel.classList.add("tension");
-    const target = nextRotationForSegment(actualSegment, 8);
-    await animateRotationFrame(target, 5000);
-    await bounceStop(target);
-    wheel.classList.remove("tension");
-  }
+  wheel.classList.add("tension");
+  const target = finalRotationForSegment(actualSegment);
+  await animateRotationFrame(target, 5000);
+  await bounceStop(target);
+  wheel.classList.remove("tension", "slip");
   setTimeout(() => showSpinResultToast(result), 300);
 }
 
