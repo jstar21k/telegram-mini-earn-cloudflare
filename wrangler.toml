@@ -5,6 +5,7 @@ compatibility_date = "2026-06-10"
 compatibility_flags = ["python_workers"]
 workers_dev = true
 preview_urls = true
+pages_build_output_dir = "frontend"
 
 [vars]
 MINI_APP_URL = "https://telegram-mini-earn.pages.dev"
