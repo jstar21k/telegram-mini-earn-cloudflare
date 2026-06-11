@@ -82,27 +82,27 @@
             <div class="wheel-pointer" aria-hidden="true"></div>
             <div class="wheel-rotor" id="spin-wheel">
               <div class="wheel-prizes" aria-hidden="true">
-                <span style="--i: 0">+5</span>
-                <span style="--i: 1">+5</span>
-                <span style="--i: 2">+10</span>
-                <span style="--i: 3">+20</span>
-                <span style="--i: 4">+20</span>
-                <span style="--i: 5">+50</span>
-                <span style="--i: 6">+100</span>
-                <span style="--i: 7">+500</span>
+                <span style="--i: 0">+500</span>
+                <span style="--i: 1">+100</span>
+                <span style="--i: 2">+5</span>
+                <span style="--i: 3">+50</span>
+                <span style="--i: 4">0</span>
+                <span style="--i: 5">+20</span>
+                <span style="--i: 6">+10</span>
+                <span style="--i: 7">+5</span>
               </div>
               <strong id="spin-result">+?</strong>
             </div>
           </div>
           <div class="reward-strip" id="spin-rewards" aria-label="Wheel reward legend">
-            <strong data-reward="5">+5</strong>
-            <strong data-reward="5">+5</strong>
-            <strong data-reward="10">+10</strong>
-            <strong data-reward="20">+20</strong>
-            <strong data-reward="20">+20</strong>
-            <strong data-reward="50">+50</strong>
-            <strong data-reward="100">+100</strong>
             <strong data-reward="500">+500</strong>
+            <strong data-reward="100">+100</strong>
+            <strong data-reward="5">+5</strong>
+            <strong data-reward="50">+50</strong>
+            <strong data-reward="0">0</strong>
+            <strong data-reward="20">+20</strong>
+            <strong data-reward="10">+10</strong>
+            <strong data-reward="5">+5</strong>
           </div>
           <div class="spin-actions">
             <button class="primary-btn spin-now-btn" id="spin-button" type="button">🎰 SPIN NOW</button>
@@ -116,6 +116,7 @@
           <h2>Quests</h2>
           <p id="challenge-progress">0/15 challenges done today</p>
         </header>
+        <section class="daily-complete-banner" id="challenge-banner" hidden></section>
         <section class="daily-challenges">
           <div class="panel-row">
             <div>
@@ -165,7 +166,7 @@
       <section class="screen" id="withdraw-screen" data-screen="withdraw">
         <header class="section-head">
           <h2>Withdraw</h2>
-          <p>Minimum payout is ₹400 by UPI.</p>
+          <p>Minimum payout is 1000 coins by UPI.</p>
         </header>
         <section class="withdraw-card">
           <div class="panel-row">
@@ -178,7 +179,7 @@
           </label>
           <label>
             Amount
-            <input id="withdraw-amount" type="number" min="400" step="1" placeholder="400" />
+            <input id="withdraw-amount" type="number" min="1000" step="1" placeholder="1000" />
           </label>
           <button class="primary-btn" id="submit-withdraw">Submit withdrawal</button>
           <p class="form-note">New accounts can withdraw after 24 hours. Duplicate UPI IDs are flagged for review.</p>

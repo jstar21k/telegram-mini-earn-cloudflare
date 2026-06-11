@@ -8,15 +8,17 @@ const ENERGY_MAX = 10;
 const ENERGY_BOOST_CAP = 15;
 const SPIN_CAP = 15;
 const CHALLENGE_CAP = 15;
+const FREE_SPIN_PREFIX = "missionvault.freeSpinUsed.";
+const CHALLENGE_REWARDS = [2, 2, 3, 3, 5, 5, 8, 8, 10, 10, 15, 15, 20, 25, 50];
 const SPIN_SEGMENTS = [
-  { id: 1, reward: 5 },
-  { id: 2, reward: 5 },
-  { id: 3, reward: 10 },
-  { id: 4, reward: 20 },
-  { id: 5, reward: 20 },
-  { id: 6, reward: 50 },
-  { id: 7, reward: 100 },
-  { id: 8, reward: 500 },
+  { id: 1, reward: 500, label: "+500", tease: false },
+  { id: 2, reward: 100, label: "+100", tease: false },
+  { id: 3, reward: 5, label: "+5", tease: true },
+  { id: 4, reward: 50, label: "+50", tease: false },
+  { id: 5, reward: 0, label: "0", tease: true },
+  { id: 6, reward: 20, label: "+20", tease: false },
+  { id: 7, reward: 10, label: "+10", tease: true },
+  { id: 8, reward: 5, label: "+5", tease: true },
 ];
 
 const tg = window.Telegram?.WebApp;
@@ -65,18 +67,22 @@ const mockState = {
   ],
   withdrawals: [],
   energy: {
-    energy: 10,
+    energy: 0,
     boosts_today: 0,
     reset_date: new Date().toISOString().slice(0, 10),
     max_energy: 10,
     boost_daily_cap: 15,
     spins_today: 0,
     spins_left: 15,
+    free_spin_used: false,
+    free_spin_available: true,
   },
   challenges: {
     done_today: 0,
     reset_date: new Date().toISOString().slice(0, 10),
-    rewards_today: [5, 10, 15, 20, 5, 10, 15, 20, 5, 10, 15, 20, 5, 10, 15],
+    rewards_today: CHALLENGE_REWARDS,
+    coins_earned_today: 0,
+    total_coins_today: 181,
     daily_cap: 15,
   },
   user: null,
@@ -168,35 +174,43 @@ async function mockApi(path, options = {}) {
   }
   if (path === "/api/energy-boost") {
     if (mockState.energy.boosts_today >= ENERGY_BOOST_CAP) throw new Error("Max boosts reached for today");
-    mockState.energy.energy = Math.min(ENERGY_MAX, mockState.energy.energy + 2);
+    mockState.energy.energy = Math.min(ENERGY_MAX, mockState.energy.energy + 1);
     mockState.energy.boosts_today += 1;
     return { success: true, new_energy: mockState.energy.energy, boosts_left: ENERGY_BOOST_CAP - mockState.energy.boosts_today, ...structuredClone(mockState.energy) };
   }
   if (path === "/api/spin") {
-    if (mockState.energy.energy <= 0) throw new Error("No energy left. Boost energy to spin again.");
     if (mockState.energy.spins_today >= SPIN_CAP) throw new Error("Daily spin limit reached");
-    const segment = SPIN_SEGMENTS[Math.floor(Math.random() * SPIN_SEGMENTS.length)];
+    const useFreeSpin = body.free_spin && !mockState.energy.free_spin_used;
+    if (!useFreeSpin && mockState.energy.energy <= 0) throw new Error("Watch a sponsor mission to unlock your next spin.");
+    const segment = pickMockSpinSegment();
     const reward = segment.reward;
-    mockState.energy.energy -= 1;
+    if (useFreeSpin) {
+      mockState.energy.free_spin_used = true;
+      mockState.energy.free_spin_available = false;
+    } else {
+      mockState.energy.energy -= 1;
+    }
     mockState.energy.spins_today += 1;
     mockState.energy.spins_left = SPIN_CAP - mockState.energy.spins_today;
     mockState.user.balance += reward;
     mockState.user.total_earned += reward;
-    return { success: true, prize_coins: reward, reward, segment_id: segment.id, new_balance: mockState.user.balance, energy_left: mockState.energy.energy, ...structuredClone(mockState.energy) };
+    return { success: true, prize_coins: reward, reward, segment_id: segment.id, segment_label: segment.label, used_free_spin: useFreeSpin, new_balance: mockState.user.balance, energy_left: mockState.energy.energy, ...structuredClone(mockState.energy) };
   }
   if (path.startsWith("/api/challenges/") && options.method !== "POST") {
     return structuredClone(mockState.challenges);
   }
   if (path === "/api/challenge-complete") {
     if (mockState.challenges.done_today >= CHALLENGE_CAP) throw new Error("Come back tomorrow!");
+    if (Number(body.slot) !== Number(mockState.challenges.done_today)) throw new Error("Complete challenges in order.");
     const reward = mockState.challenges.rewards_today[body.slot] || 5;
     mockState.challenges.done_today += 1;
+    mockState.challenges.coins_earned_today = challengeEarnedToday(mockState.challenges.done_today);
     mockState.user.balance += reward;
     mockState.user.total_earned += reward;
     return { success: true, coins_earned: reward, reward, new_balance: mockState.user.balance, challenges_left: CHALLENGE_CAP - mockState.challenges.done_today, ...structuredClone(mockState.challenges) };
   }
   if (path === "/api/withdraw") {
-    if (body.amount < 400) throw new Error("Minimum withdrawal is ₹400");
+    if (body.amount < 1000) throw new Error("Minimum withdrawal is 1000 coins");
     if (body.amount > mockState.user.balance) throw new Error("Insufficient balance");
     mockState.user.balance -= body.amount;
     mockState.user.total_withdrawn += body.amount;
@@ -231,6 +245,44 @@ function rewardClass(value) {
   if (reward >= 20) return "reward-blue";
   if (reward >= 10) return "reward-green";
   return "reward-low";
+}
+
+function freeSpinKey() {
+  return `${FREE_SPIN_PREFIX}${tgUser.id}`;
+}
+
+function localFreeSpinUsed() {
+  return localStorage.getItem(freeSpinKey()) === "1";
+}
+
+function markLocalFreeSpinUsed() {
+  localStorage.setItem(freeSpinKey(), "1");
+}
+
+function isFreeSpinAvailable() {
+  return Boolean(state.energy?.free_spin_available) && !localFreeSpinUsed();
+}
+
+function challengeEarnedToday(doneToday) {
+  return CHALLENGE_REWARDS.slice(0, Math.max(0, Math.min(Number(doneToday || 0), CHALLENGE_CAP))).reduce((sum, value) => sum + value, 0);
+}
+
+function pickMockSpinSegment() {
+  const weighted = [
+    { id: 2, reward: 100, weight: 3 },
+    { id: 3, reward: 5, weight: 25 },
+    { id: 4, reward: 50, weight: 5 },
+    { id: 5, reward: 0, weight: 15 },
+    { id: 6, reward: 20, weight: 8 },
+    { id: 7, reward: 10, weight: 24 },
+    { id: 8, reward: 5, weight: 20 },
+  ];
+  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+  let roll = Math.random() * total;
+  return weighted.find((item) => {
+    roll -= item.weight;
+    return roll <= 0;
+  }) || weighted[weighted.length - 1];
 }
 
 function showLoader(show, text = "Preparing mission...") {
@@ -282,7 +334,7 @@ function renderUser() {
   $("#user-name").textContent = state.user.first_name || state.user.username || "MissionVault";
   $("#balance").textContent = `${coins(state.user.balance)} Coins`;
   $("#balance-rupee").textContent = `(= ${money(state.user.balance)})`;
-  $("#withdraw-balance").textContent = money(state.user.balance);
+  $("#withdraw-balance").textContent = `${coins(state.user.balance)} Coins`;
   $("#ref-count").textContent = state.user.referral_count || 0;
   $("#ref-earned").textContent = `${coins(state.user.referral_earnings)} Coins`;
 
@@ -298,24 +350,42 @@ function renderEnergy() {
   const spinsToday = Number(energy.spins_today || 0);
   const boostCap = Number(energy.boost_daily_cap || ENERGY_BOOST_CAP);
   const boostsToday = Number(energy.boosts_today || 0);
-  $("#spin-status").textContent = energyLeft > 0 ? "Server-picked rewards. Wheel lands on your prize." : "No energy left. Boost to keep spinning.";
+  if (energy.free_spin_used) markLocalFreeSpinUsed();
+  const freeAvailable = isFreeSpinAvailable();
+  const capped = spinsToday >= SPIN_CAP;
+  $("#spin-status").textContent = capped
+    ? "Come back tomorrow 🌙"
+    : freeAvailable
+      ? "Free first spin ready. Then sponsor missions unlock spins."
+      : energyLeft > 0
+        ? "Server-picked rewards. Wheel lands on your prize."
+        : "Watch a sponsor mission to unlock your next spin.";
   $("#energy-label").textContent = `⚡ ${energyLeft}/${ENERGY_MAX} Energy left`;
   $("#spins-label").textContent = `🔄 ${spinsToday}/${SPIN_CAP} spins today`;
   $("#energy-fill").style.width = `${(energyLeft / ENERGY_MAX) * 100}%`;
   $("#boost-count").textContent = `🚀 ${boostsToday}/${boostCap} Boosts`;
-  $("#spin-button").disabled = energyLeft <= 0 || spinsToday >= SPIN_CAP;
+  $("#spin-button").disabled = capped;
+  $("#spin-button").textContent = capped ? "🌙 COME BACK TOMORROW" : "🎰 SPIN NOW";
 }
 
 function renderChallenges() {
   const challenges = state.challenges || { done_today: 0, daily_cap: CHALLENGE_CAP, rewards_today: [] };
   const done = Number(challenges.done_today || 0);
   const cap = Number(challenges.daily_cap || CHALLENGE_CAP);
-  $("#challenge-progress").textContent = done >= cap ? "Come back tomorrow!" : `${done}/${cap} challenges done today`;
-  $("#challenge-slots").innerHTML = (challenges.rewards_today || []).map((reward, index) => {
-    const progressText = index < done ? "Completed" : "Ready";
+  const earnedToday = Number(challenges.coins_earned_today ?? challengeEarnedToday(done));
+  const totalToday = Number(challenges.total_coins_today || 181);
+  $("#challenge-progress").textContent = done >= cap ? `Daily Complete! 🎉 · ${earnedToday} coins earned today` : `${done}/${cap} challenges done · ${earnedToday} coins earned today`;
+  const banner = $("#challenge-banner");
+  banner.hidden = done < cap;
+  banner.textContent = `Daily Complete! 🎉 ${earnedToday}/${totalToday} coins collected`;
+  $("#challenge-slots").innerHTML = (challenges.rewards_today || CHALLENGE_REWARDS).map((reward, index) => {
+    const isCompleted = index < done;
+    const isActive = index === done && done < cap;
+    const progressText = isCompleted ? "✓ Completed" : isActive ? "Ready" : "Locked";
+    const tier = index < 6 ? "easy" : index < 12 ? "medium" : index < 14 ? "hard" : "final";
     return `
-    <button class="challenge-card ${rewardClass(reward)}" type="button" data-challenge-slot="${index}" ${done >= cap || index < done ? "disabled" : ""}>
-      <span>Challenge ${index + 1}</span>
+    <button class="challenge-card ${rewardClass(reward)} challenge-${tier} ${isCompleted ? "completed" : ""} ${isActive ? "active" : "locked"}" type="button" data-challenge-slot="${index}" ${!isActive ? "disabled" : ""}>
+      <span>${index === 14 ? "🔥 " : ""}Challenge ${index + 1}</span>
       <strong><i aria-hidden="true"></i>+${Number(reward || 0)} Coins</strong>
       <small>${progressText}</small>
     </button>
@@ -327,6 +397,69 @@ function spinRotationForSegment(segmentId) {
   const segmentSize = 360 / SPIN_SEGMENTS.length;
   const centerAngle = (Number(segmentId || 1) - 0.5) * segmentSize;
   return state.wheelTurns * 1800 + (360 - centerAngle);
+}
+
+function teaseSegmentFor(result) {
+  const reward = Number(result.prize_coins ?? result.reward ?? 0);
+  if (reward === 0) return 4; // +50 tease before Better Luck.
+  if (reward === 5 || reward === 10) return reward === 5 ? 2 : 4;
+  return null;
+}
+
+function setWheelTransition(value) {
+  $("#spin-wheel").style.transition = value;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function animateWheelResult(result) {
+  const wheel = $("#spin-wheel");
+  const teaseSegment = teaseSegmentFor(result);
+  if (teaseSegment) {
+    wheel.classList.add("tension");
+    state.wheelTurns += 1;
+    setWheelTransition("transform 1900ms cubic-bezier(0.08, 0.76, 0.12, 1)");
+    wheel.style.transform = `rotate(${spinRotationForSegment(teaseSegment)}deg)`;
+    await wait(1950);
+    wheel.classList.add("slip");
+    state.wheelTurns += 1;
+    setWheelTransition("transform 720ms cubic-bezier(0.42, 0, 0.18, 1)");
+    wheel.style.transform = `rotate(${spinRotationForSegment(result.segment_id)}deg)`;
+    await wait(760);
+    wheel.classList.remove("tension", "slip");
+    setWheelTransition("");
+  } else {
+    wheel.classList.add("tension");
+    state.wheelTurns += 1;
+    setWheelTransition("transform 2400ms cubic-bezier(0.06, 0.72, 0.09, 1)");
+    wheel.style.transform = `rotate(${spinRotationForSegment(result.segment_id)}deg)`;
+    await wait(2450);
+    wheel.classList.remove("tension");
+    setWheelTransition("");
+  }
+  const reward = Number(result.prize_coins ?? result.reward ?? 0);
+  $("#spin-result").textContent = reward > 0 ? `+${reward}` : "0";
+}
+
+function spinToastMessage(result) {
+  const reward = Number(result.prize_coins ?? result.reward ?? 0);
+  if (reward === 100) return "Lucky! 🎉 +100 Coins";
+  if (reward === 0) return "Almost! Try again 🎰";
+  if (reward === 5 || reward === 10) return "So close! +100 was just one step away 😭";
+  return `🎰 ${reward} Coins Won!`;
+}
+
+function triggerConfetti() {
+  const layer = document.createElement("div");
+  layer.className = "confetti-layer";
+  const colors = ["#ffd700", "#00c853", "#ffffff", "#ff8a00", "#35d3ff"];
+  layer.innerHTML = Array.from({ length: 30 }, (_, index) => (
+    `<span style="--x:${Math.random() * 220 - 110}px;--r:${Math.random() * 360}deg;--c:${colors[index % colors.length]}"></span>`
+  )).join("");
+  document.body.appendChild(layer);
+  setTimeout(() => layer.remove(), 1300);
 }
 
 function switchScreen(screen, options = {}) {
@@ -460,29 +593,41 @@ async function watchAd(network) {
 
 async function spinWheel() {
   try {
+    if (state.energy && Number(state.energy.spins_today || 0) >= Number(state.energy.spin_daily_cap || SPIN_CAP)) {
+      showAlert("Come back tomorrow 🌙");
+      return;
+    }
+    const useFreeSpin = isFreeSpinAvailable();
+    const hasEnergy = Number(state.energy?.energy || 0) > 0;
+    if (!useFreeSpin && !hasEnergy) {
+      const unlocked = await earnSpinEnergy({ showResultToast: false });
+      if (!unlocked) return;
+    }
     const result = await api("/api/spin", {
       method: "POST",
-      body: JSON.stringify({ tg_id: tgUser.id }),
+      body: JSON.stringify({ tg_id: tgUser.id, free_spin: useFreeSpin }),
     });
+    if (result.used_free_spin || useFreeSpin) markLocalFreeSpinUsed();
     state.energy = result;
     renderEnergy();
-    state.wheelTurns += 1;
-    $("#spin-wheel").style.transform = `rotate(${spinRotationForSegment(result.segment_id)}deg)`;
-    $("#spin-result").textContent = `+${result.prize_coins}`;
+    await animateWheelResult(result);
     await refreshUser();
-    showToast(`🎰 ${result.prize_coins} Coins Won!`);
+    if (Number(result.prize_coins || 0) === 100) triggerConfetti();
+    showToast(spinToastMessage(result));
   } catch (error) {
     showAlert(error.message);
+  } finally {
+    showLoader(false);
   }
 }
 
-async function boostEnergy() {
+async function earnSpinEnergy({ showResultToast = true } = {}) {
   try {
     if (state.energy && Number(state.energy.boosts_today || 0) >= Number(state.energy.boost_daily_cap || ENERGY_BOOST_CAP)) {
       showAlert("Max boosts reached for today");
-      return;
+      return null;
     }
-    showLoader(true, "Charging energy...");
+    showLoader(true, "Watch sponsor mission to unlock a spin...");
     const tokenData = await api("/api/ad-token", {
       method: "POST",
       body: JSON.stringify({ tg_id: tgUser.id, network: "adsgram" }),
@@ -501,12 +646,18 @@ async function boostEnergy() {
     });
     state.energy = result;
     renderEnergy();
-    showToast("+2 Energy Added!");
+    if (showResultToast) showToast("+1 Spin Unlocked!");
+    return result;
   } catch (error) {
     showAlert(error.message);
+    return null;
   } finally {
     showLoader(false);
   }
+}
+
+async function boostEnergy() {
+  await earnSpinEnergy();
 }
 
 async function completeChallenge(slot) {
@@ -535,7 +686,13 @@ async function completeChallenge(slot) {
     state.challenges = result;
     renderChallenges();
     await refreshUser();
-    showToast(`🎯 Challenge Complete! +${result.coins_earned} Coins`);
+    if (Number(result.done_today || 0) === 14) {
+      showToast("One more! +50 coins waiting 🔥");
+    } else if (Number(result.done_today || 0) >= CHALLENGE_CAP) {
+      showToast(`Daily Complete! 🎉 ${result.coins_earned_today} coins earned`);
+    } else {
+      showToast(`🎯 Challenge Complete! +${result.coins_earned} Coins`);
+    }
   } catch (error) {
     showAlert(error.message);
   } finally {

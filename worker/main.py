@@ -33,25 +33,25 @@ REFERRAL_JOIN_BONUS = 1_000
 REFERRAL_AD_EARN_THRESHOLD = 5_000
 AD_REWARD = 500
 TASK_DEFAULT_REWARD = 1_000
-MIN_WITHDRAWAL = 50_000
+MIN_WITHDRAWAL = 100_000
 TOKEN_TTL_MINUTES = 10
 NETWORKS = {"adsgram", "monetag"}
 ENERGY_MAX = 10
 ENERGY_BOOST_DAILY_CAP = 15
-ENERGY_PER_BOOST = 2
+ENERGY_PER_BOOST = 1
 SPIN_DAILY_CAP = 15
 CHALLENGE_DAILY_CAP = 15
-CHALLENGE_REWARDS = [5, 10, 15, 20]
+CHALLENGE_REWARDS = [2, 2, 3, 3, 5, 5, 8, 8, 10, 10, 15, 15, 20, 25, 50]
 CHALLENGE_SLOTS = 15
 SPIN_SEGMENTS = [
-    {"id": 1, "reward": 5, "weight": 30.0},
-    {"id": 2, "reward": 5, "weight": 30.0},
-    {"id": 3, "reward": 10, "weight": 20.0},
-    {"id": 4, "reward": 20, "weight": 10.0},
-    {"id": 5, "reward": 20, "weight": 5.0},
-    {"id": 6, "reward": 50, "weight": 3.0},
-    {"id": 7, "reward": 100, "weight": 1.5},
-    {"id": 8, "reward": 500, "weight": 0.5},
+    {"id": 1, "reward": 500, "weight": 0.0, "label": "+500"},
+    {"id": 2, "reward": 100, "weight": 3.0, "label": "+100"},
+    {"id": 3, "reward": 5, "weight": 25.0, "label": "+5"},
+    {"id": 4, "reward": 50, "weight": 5.0, "label": "+50"},
+    {"id": 5, "reward": 0, "weight": 15.0, "label": "Better Luck"},
+    {"id": 6, "reward": 20, "weight": 8.0, "label": "+20"},
+    {"id": 7, "reward": 10, "weight": 24.0, "label": "+10"},
+    {"id": 8, "reward": 5, "weight": 20.0, "label": "+5"},
 ]
 
 
@@ -103,6 +103,7 @@ class TaskVerifyBody(BaseModel):
 class EnergyActionBody(BaseModel):
     tg_id: int
     token: str | None = None
+    free_spin: bool = False
 
 
 class ChallengeCompleteBody(BaseModel):
@@ -173,9 +174,11 @@ def db_from_request(req: Request):
 
 
 def daily_rewards_for(tg_id: int, date: str) -> list[int]:
-    seed = int(hashlib.sha256(f"{tg_id}:{date}:challenges".encode()).hexdigest()[:12], 16)
-    rng = random.Random(seed)
-    return [rng.choice(CHALLENGE_REWARDS) for _ in range(CHALLENGE_SLOTS)]
+    return CHALLENGE_REWARDS.copy()
+
+
+def challenge_earned_today(done_today: int) -> int:
+    return sum(CHALLENGE_REWARDS[: max(0, min(done_today, CHALLENGE_SLOTS))])
 
 
 def pick_spin_segment() -> dict[str, Any]:
@@ -295,7 +298,7 @@ async def reset_daily_state(db: Any, user: dict[str, Any]) -> dict[str, Any]:
     params: list[Any] = []
     if user.get("energy_reset_date") != date:
         updates.extend(["energy = ?", "boosts_today = ?", "spins_today = ?", "energy_reset_date = ?", "spin_reset_date = ?"])
-        params.extend([ENERGY_MAX, 0, 0, date, date])
+        params.extend([0, 0, 0, date, date])
     elif user.get("spin_reset_date") != date:
         updates.extend(["spins_today = ?", "spin_reset_date = ?"])
         params.extend([0, date])
@@ -384,9 +387,11 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
             INSERT INTO users (
                 tg_id, username, first_name, balance_paise, total_earned_paise,
                 referral_code, referred_by, streak_bonus_claimed, level,
-                referral_bonus_paid, welcome_bonus_given, created_at
+                referral_bonus_paid, welcome_bonus_given, created_at,
+                energy, boosts_today, spins_today, energy_reset_date, spin_reset_date,
+                challenges_today, challenges_reset_date, free_spin_used
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, 0, 0, ?, ?, 0, ?, 0)
             """,
             body.tg_id,
             body.username or "",
@@ -398,6 +403,9 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
             "[]",
             "bronze",
             created,
+            today_ist(),
+            today_ist(),
+            today_ist(),
         )
     else:
         await d1_run(
@@ -406,9 +414,11 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
             INSERT INTO users (
                 tg_id, username, first_name, balance_paise, total_earned_paise,
                 referral_code, referred_by, streak_bonus_claimed, level,
-                welcome_bonus_given, created_at
+                welcome_bonus_given, created_at,
+                energy, boosts_today, spins_today, energy_reset_date, spin_reset_date,
+                challenges_today, challenges_reset_date, free_spin_used
             )
-            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1, ?)
+            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 1, ?, 0, 0, 0, ?, ?, 0, ?, 0)
             """,
             body.tg_id,
             body.username or "",
@@ -419,6 +429,9 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
             "[]",
             "bronze",
             created,
+            today_ist(),
+            today_ist(),
+            today_ist(),
         )
     await add_transaction(db, body.tg_id, "welcome_bonus", WELCOME_BONUS, "One-time welcome bonus")
 
@@ -782,9 +795,10 @@ async def list_tasks(req: Request, tg_id: int | None = None):
 @app.get("/api/energy/{tg_id}")
 async def api_energy(tg_id: int, req: Request):
     user = await get_user_or_404(db_from_request(req), tg_id)
-    energy = max(0, min(ENERGY_MAX, int(user.get("energy") or ENERGY_MAX)))
+    energy = max(0, min(ENERGY_MAX, int(user.get("energy") if user.get("energy") is not None else 0)))
     boosts_today = int(user.get("boosts_today") or 0)
     spins_today = int(user.get("spins_today") or 0)
+    free_spin_used = bool(user.get("free_spin_used", 0))
     return {
         "energy": energy,
         "boosts_today": boosts_today,
@@ -795,6 +809,8 @@ async def api_energy(tg_id: int, req: Request):
         "spins_today": spins_today,
         "spin_daily_cap": SPIN_DAILY_CAP,
         "spins_left": max(0, SPIN_DAILY_CAP - spins_today),
+        "free_spin_used": free_spin_used,
+        "free_spin_available": not free_spin_used,
     }
 
 
@@ -831,14 +847,19 @@ async def api_spin(body: EnergyActionBody, req: Request):
     user = await get_user_or_404(db, body.tg_id)
     energy = int(user.get("energy") or 0)
     spins_today = int(user.get("spins_today") or 0)
-    if energy <= 0:
-        raise HTTPException(status_code=400, detail="No energy left. Boost energy to spin again.")
     if spins_today >= SPIN_DAILY_CAP:
-        raise HTTPException(status_code=429, detail="Daily spin limit reached")
+        raise HTTPException(status_code=429, detail="Come back tomorrow 🌙")
+
+    free_spin_used = bool(user.get("free_spin_used", 0))
+    using_free_spin = bool(body.free_spin and not free_spin_used)
+    if not using_free_spin and energy <= 0:
+        raise HTTPException(status_code=400, detail="Watch a sponsor mission to unlock your next spin.")
+
     segment = pick_spin_segment()
     reward = int(segment["reward"])
     reward_paise = reward * 100
-    energy -= 1
+    if not using_free_spin:
+        energy -= 1
     spins_today += 1
     await d1_run(
         db,
@@ -847,6 +868,7 @@ async def api_spin(body: EnergyActionBody, req: Request):
         SET energy = ?,
             spins_today = ?,
             spin_reset_date = ?,
+            free_spin_used = CASE WHEN ? THEN 1 ELSE free_spin_used END,
             balance_paise = balance_paise + ?,
             total_earned_paise = total_earned_paise + ?
         WHERE tg_id = ?
@@ -854,6 +876,7 @@ async def api_spin(body: EnergyActionBody, req: Request):
         energy,
         spins_today,
         today_ist(),
+        1 if using_free_spin else 0,
         reward_paise,
         reward_paise,
         body.tg_id,
@@ -866,12 +889,19 @@ async def api_spin(body: EnergyActionBody, req: Request):
         "prize_coins": reward,
         "reward": reward,
         "segment_id": int(segment["id"]),
+        "segment_label": str(segment.get("label") or reward),
+        "free_spin_used": bool(user.get("free_spin_used", 0)),
+        "used_free_spin": using_free_spin,
         "new_balance": paise_to_rupees(user["balance_paise"]),
         "level": level,
         "energy_left": energy,
         "energy": energy,
         "max_energy": ENERGY_MAX,
+        "boosts_today": int(user.get("boosts_today") or 0),
+        "boost_daily_cap": ENERGY_BOOST_DAILY_CAP,
+        "boosts_left": max(0, ENERGY_BOOST_DAILY_CAP - int(user.get("boosts_today") or 0)),
         "spins_today": spins_today,
+        "spin_daily_cap": SPIN_DAILY_CAP,
         "spins_left": max(0, SPIN_DAILY_CAP - spins_today),
     }
 
@@ -881,10 +911,13 @@ async def api_challenges(tg_id: int, req: Request):
     user = await get_user_or_404(db_from_request(req), tg_id)
     done_today = int(user.get("challenges_today") or 0)
     date = user.get("challenges_reset_date") or today_ist()
+    earned_today = challenge_earned_today(done_today)
     return {
         "done_today": done_today,
         "reset_date": date,
         "rewards_today": daily_rewards_for(tg_id, date),
+        "coins_earned_today": earned_today,
+        "total_coins_today": sum(CHALLENGE_REWARDS),
         "daily_cap": CHALLENGE_DAILY_CAP,
         "challenges_left": max(0, CHALLENGE_DAILY_CAP - done_today),
     }
@@ -897,6 +930,8 @@ async def api_challenge_complete(body: ChallengeCompleteBody, req: Request):
     done_today = int(user.get("challenges_today") or 0)
     if done_today >= CHALLENGE_DAILY_CAP:
         raise HTTPException(status_code=429, detail="Come back tomorrow!")
+    if body.slot != done_today:
+        raise HTTPException(status_code=400, detail="Complete challenges in order.")
     await consume_completed_token(db, body.tg_id, "monetag", body.token)
 
     date = user.get("challenges_reset_date") or today_ist()
@@ -932,6 +967,8 @@ async def api_challenge_complete(body: ChallengeCompleteBody, req: Request):
         "done_today": done_today,
         "reset_date": today_ist(),
         "rewards_today": rewards_today,
+        "coins_earned_today": challenge_earned_today(done_today),
+        "total_coins_today": sum(CHALLENGE_REWARDS),
         "daily_cap": CHALLENGE_DAILY_CAP,
         "challenges_left": max(0, CHALLENGE_DAILY_CAP - done_today),
     }
@@ -979,7 +1016,7 @@ async def withdraw(body: WithdrawBody, req: Request):
     user = await get_user_or_404(db, body.tg_id)
     amount_paise = rupees_to_paise(body.amount)
     if amount_paise < MIN_WITHDRAWAL:
-        raise HTTPException(status_code=400, detail="Minimum withdrawal is ₹500")
+        raise HTTPException(status_code=400, detail="Minimum withdrawal is 1000 coins")
     if int(user["balance_paise"] or 0) < amount_paise:
         raise HTTPException(status_code=400, detail="Insufficient balance")
     if datetime.fromisoformat(user["created_at"]) > now_ist() - timedelta(hours=24):

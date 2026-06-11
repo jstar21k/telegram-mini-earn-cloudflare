@@ -38,7 +38,7 @@ def test_referral_unlock_threshold():
 
 
 def test_minimum_withdrawal_rule():
-    assert worker_main.MIN_WITHDRAWAL == 50000
+    assert worker_main.MIN_WITHDRAWAL == 100000
 
 
 def test_active_ad_networks():
@@ -47,23 +47,34 @@ def test_active_ad_networks():
 
 def test_spin_segments_match_config():
     assert worker_main.SPIN_SEGMENTS == [
-        {"id": 1, "reward": 5, "weight": 30.0},
-        {"id": 2, "reward": 5, "weight": 30.0},
-        {"id": 3, "reward": 10, "weight": 20.0},
-        {"id": 4, "reward": 20, "weight": 10.0},
-        {"id": 5, "reward": 20, "weight": 5.0},
-        {"id": 6, "reward": 50, "weight": 3.0},
-        {"id": 7, "reward": 100, "weight": 1.5},
-        {"id": 8, "reward": 500, "weight": 0.5},
+        {"id": 1, "reward": 500, "weight": 0.0, "label": "+500"},
+        {"id": 2, "reward": 100, "weight": 3.0, "label": "+100"},
+        {"id": 3, "reward": 5, "weight": 25.0, "label": "+5"},
+        {"id": 4, "reward": 50, "weight": 5.0, "label": "+50"},
+        {"id": 5, "reward": 0, "weight": 15.0, "label": "Better Luck"},
+        {"id": 6, "reward": 20, "weight": 8.0, "label": "+20"},
+        {"id": 7, "reward": 10, "weight": 24.0, "label": "+10"},
+        {"id": 8, "reward": 5, "weight": 20.0, "label": "+5"},
     ]
+    assert sum(segment["weight"] for segment in worker_main.SPIN_SEGMENTS) == 100.0
+    assert worker_main.SPIN_SEGMENTS[0]["weight"] == 0.0
 
 
 def test_spin_and_challenge_limits():
     assert worker_main.ENERGY_MAX == 10
     assert worker_main.ENERGY_BOOST_DAILY_CAP == 15
+    assert worker_main.ENERGY_PER_BOOST == 1
     assert worker_main.SPIN_DAILY_CAP == 15
     assert worker_main.CHALLENGE_DAILY_CAP == 15
     assert worker_main.CHALLENGE_SLOTS == 15
+
+
+def test_challenge_reward_ladder():
+    assert worker_main.CHALLENGE_REWARDS == [2, 2, 3, 3, 5, 5, 8, 8, 10, 10, 15, 15, 20, 25, 50]
+    assert sum(worker_main.CHALLENGE_REWARDS) == 181
+    assert worker_main.daily_rewards_for(123, "2026-06-11") == worker_main.CHALLENGE_REWARDS
+    assert worker_main.challenge_earned_today(14) == 131
+    assert worker_main.challenge_earned_today(15) == 181
 
 
 def test_withdrawal_callback_data():
