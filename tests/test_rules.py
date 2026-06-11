@@ -11,6 +11,9 @@ spec.loader.exec_module(worker_main)
 def test_money_conversion_round_trip():
     assert worker_main.rupees_to_paise(400) == 40000
     assert worker_main.paise_to_rupees(5050) == 50.5
+    assert worker_main.coins_to_inr(1000) == 500
+    assert worker_main.withdrawal_payout_inr(100000) == 500
+    assert worker_main.withdrawal_payout_inr(200000) == 1050
 
 
 def test_level_thresholds():
@@ -22,23 +25,25 @@ def test_level_thresholds():
 
 
 def test_referral_rules():
-    assert worker_main.REFERRAL_JOIN_BONUS == 1000
-    assert worker_main.REFERRAL_AD_EARN_THRESHOLD == 5000
-    assert worker_main.WELCOME_BONUS == 2500
+    assert worker_main.REFERRAL_JOIN_BONUS == 2000
+    assert worker_main.WELCOME_BONUS == 1000
     assert worker_main.AD_REWARD == 500
     assert not hasattr(worker_main, "PASSIVE_REFERRAL_REWARD")
 
 
-def test_referral_unlock_threshold():
+def test_referral_unlock_threshold_is_disabled_for_instant_signup_bonus():
     referred_user = {"referred_by": 1, "referral_bonus_paid": 0}
     assert worker_main.should_unlock_referral_bonus(referred_user, 4999) is False
-    assert worker_main.should_unlock_referral_bonus(referred_user, 5000) is True
+    assert worker_main.should_unlock_referral_bonus(referred_user, 5000) is False
     assert worker_main.should_unlock_referral_bonus({"referred_by": 1, "referral_bonus_paid": 1}, 5000) is False
     assert worker_main.should_unlock_referral_bonus({"referred_by": None, "referral_bonus_paid": 0}, 5000) is False
 
 
 def test_minimum_withdrawal_rule():
     assert worker_main.MIN_WITHDRAWAL == 100000
+    assert worker_main.BONUS_WITHDRAWAL == 200000
+    assert worker_main.BONUS_WITHDRAWAL_RUPEES == 50
+    assert worker_main.COINS_PER_RUPEE == 2
 
 
 def test_active_ad_networks():

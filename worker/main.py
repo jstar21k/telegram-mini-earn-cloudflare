@@ -28,12 +28,15 @@ from pydantic import BaseModel, Field
 
 
 IST = timezone(timedelta(hours=5, minutes=30))
-WELCOME_BONUS = 2_500
-REFERRAL_JOIN_BONUS = 1_000
-REFERRAL_AD_EARN_THRESHOLD = 5_000
+WELCOME_BONUS = 1_000
+REFERRAL_JOIN_BONUS = 2_000
 AD_REWARD = 500
 TASK_DEFAULT_REWARD = 1_000
 MIN_WITHDRAWAL = 100_000
+BONUS_WITHDRAWAL = 200_000
+BONUS_WITHDRAWAL_RUPEES = 50
+COIN_SCALE = 100
+COINS_PER_RUPEE = 2
 TOKEN_TTL_MINUTES = 10
 NETWORKS = {"adsgram", "monetag"}
 ENERGY_MAX = 10
@@ -62,7 +65,7 @@ class Default(WorkerEntrypoint):
         return await asgi.fetch(app, request, self.env)
 
 
-app = FastAPI(title="Telegram Mini Earn API", version="0.1.0")
+app = FastAPI(title="MissionVault API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -129,11 +132,27 @@ def today_ist() -> str:
 
 
 def paise_to_rupees(paise: int | None) -> float:
-    return round((paise or 0) / 100, 2)
+    return round((paise or 0) / COIN_SCALE, 2)
 
 
 def rupees_to_paise(amount: float) -> int:
-    return int(round(amount * 100))
+    return int(round(amount * COIN_SCALE))
+
+
+def coins_to_inr(coins: float | int | None) -> float:
+    return round(float(coins or 0) / COINS_PER_RUPEE, 2)
+
+
+def paise_to_inr(paise: int | None) -> float:
+    return coins_to_inr(paise_to_rupees(paise))
+
+
+def withdrawal_bonus_rupees(amount_paise: int | None) -> int:
+    return BONUS_WITHDRAWAL_RUPEES if int(amount_paise or 0) >= BONUS_WITHDRAWAL else 0
+
+
+def withdrawal_payout_inr(amount_paise: int | None) -> float:
+    return round(paise_to_inr(amount_paise) + withdrawal_bonus_rupees(amount_paise), 2)
 
 
 def optional_int(value: Any) -> int | None:
@@ -276,11 +295,7 @@ def calc_level(total_earned_paise: int) -> str:
 
 
 def should_unlock_referral_bonus(user: dict[str, Any], ad_earned_paise: int) -> bool:
-    return (
-        optional_int(user.get("referred_by")) is not None
-        and not int(user.get("referral_bonus_paid") or 0)
-        and ad_earned_paise >= REFERRAL_AD_EARN_THRESHOLD
-    )
+    return False
 
 
 async def update_level(db: Any, tg_id: int) -> str:
@@ -391,7 +406,7 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
                 energy, boosts_today, spins_today, energy_reset_date, spin_reset_date,
                 challenges_today, challenges_reset_date, free_spin_used
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, 0, 0, ?, ?, 0, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, 0, 0, 0, ?, ?, 0, ?, 0)
             """,
             body.tg_id,
             body.username or "",
@@ -440,11 +455,25 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
             db,
             """
             UPDATE users
-            SET referral_count = referral_count + 1
+            SET referral_count = referral_count + 1,
+                balance_paise = balance_paise + ?,
+                total_earned_paise = total_earned_paise + ?,
+                referral_earnings_paise = referral_earnings_paise + ?
             WHERE tg_id = ?
             """,
+            REFERRAL_JOIN_BONUS,
+            REFERRAL_JOIN_BONUS,
+            REFERRAL_JOIN_BONUS,
             referrer["tg_id"],
         )
+        await add_transaction(
+            db,
+            referrer["tg_id"],
+            "referral_signup",
+            REFERRAL_JOIN_BONUS,
+            f"Referral bonus for inviting {body.tg_id}",
+        )
+        await update_level(db, referrer["tg_id"])
 
     user = await d1_first(db, "SELECT * FROM users WHERE tg_id = ?", body.tg_id)
     return await serialize_user(db, user)
@@ -609,11 +638,13 @@ def withdrawal_admin_keyboard(withdrawal_id: int) -> dict[str, Any]:
 def withdrawal_admin_text(row: dict[str, Any], flagged: bool = False) -> str:
     flag_text = "\nFlag: UPI used by multiple accounts" if flagged else ""
     username = f"\nUsername: @{row['username']}" if row.get("username") else ""
+    bonus_text = f"\nBonus: ₹{withdrawal_bonus_rupees(row['amount_paise'])}" if withdrawal_bonus_rupees(row["amount_paise"]) else ""
     return (
         f"Withdrawal #{row['id']}\n"
         f"User: <code>{row['tg_id']}</code>{username}\n"
         f"UPI: <code>{row['upi_id']}</code>\n"
-        f"Amount: ₹{paise_to_rupees(row['amount_paise']):.2f}\n"
+        f"Coins: {paise_to_rupees(row['amount_paise']):.0f}\n"
+        f"Payout: ₹{withdrawal_payout_inr(row['amount_paise']):.2f}{bonus_text}\n"
         f"Status: {row['status']}{flag_text}"
     )
 
@@ -642,7 +673,7 @@ async def telegram_is_channel_member(env: Any, channel_username: str, tg_id: int
 
 @app.get("/")
 async def root():
-    return {"ok": True, "service": "telegram-mini-earn"}
+    return {"ok": True, "service": "missionvault"}
 
 
 @app.post("/api/register")
@@ -742,7 +773,6 @@ async def api_reward(body: RewardBody, req: Request):
         body.token,
     )
     await add_transaction(db, body.tg_id, "ad_reward", AD_REWARD, f"{body.network} ad reward", body.network)
-    await maybe_unlock_referral_bonus(db, user)
 
     level = await update_level(db, body.tg_id)
     updated = await get_user_or_404(db, body.tg_id)
@@ -1077,6 +1107,8 @@ async def withdraw(body: WithdrawBody, req: Request):
     return {
         "success": True,
         "new_balance": paise_to_rupees(user["balance_paise"]),
+        "payout_inr": withdrawal_payout_inr(amount_paise),
+        "bonus_rupees": withdrawal_bonus_rupees(amount_paise),
         "flagged": flagged,
         "withdrawal_id": int(withdrawal_row["id"]),
         "admin_warning": admin_warning,
@@ -1093,7 +1125,10 @@ async def withdrawal_history(tg_id: int, req: Request):
         tg_id,
     )
     for row in rows:
-        row["amount"] = paise_to_rupees(row.pop("amount_paise"))
+        amount_paise = row.pop("amount_paise")
+        row["amount"] = paise_to_rupees(amount_paise)
+        row["payout_inr"] = withdrawal_payout_inr(amount_paise)
+        row["bonus_rupees"] = withdrawal_bonus_rupees(amount_paise)
     return {"withdrawals": rows}
 
 
@@ -1265,16 +1300,16 @@ async def telegram_webhook(req: Request):
         keyboard = {"inline_keyboard": [[{"text": "Open Mini App", "web_app": {"url": mini_url}}]]} if mini_url else None
         return telegram_reply(
             chat_id,
-            f"Welcome, {registered.get('first_name') or 'friend'}!\nYour ₹25 welcome bonus is ready.\nBalance: ₹{registered['balance']:.2f}",
+            f"Welcome, {registered.get('first_name') or 'friend'}!\nYour 10 coin welcome bonus is ready.\nBalance: {registered['balance']:.0f} coins",
             keyboard,
         )
     elif command == "/balance":
-        return telegram_reply(chat_id, f"Available balance: ₹{registered['balance']:.2f}")
+        return telegram_reply(chat_id, f"Available balance: {registered['balance']:.0f} coins (= ₹{coins_to_inr(registered['balance']):.2f})")
     elif command == "/refer":
         link = f"https://t.me/{bot_name}?start={registered['referral_code']}"
         return telegram_reply(
             chat_id,
-            f"Your referral link:\n{link}\n\nFriends joined: {registered['referral_count']}\nReferral earnings: ₹{registered['referral_earnings']:.2f}\nEarn ₹10 when your friend earns ₹50 from ads.",
+            f"Your referral link:\n{link}\n\nFriends joined: {registered['referral_count']}\nReferral earnings: {registered['referral_earnings']:.0f} coins\nInvite friends, earn 20 coins per friend!",
         )
     elif command == "/withdraw":
         keyboard = {"inline_keyboard": [[{"text": "Open Withdrawal Form", "web_app": {"url": mini_url + '#withdraw'}}]]} if mini_url else None
@@ -1288,7 +1323,7 @@ async def telegram_webhook(req: Request):
         lines = ["Pending withdrawals:"]
         keyboard = {"inline_keyboard": []}
         for row in pending:
-            lines.append(f"#{row['id']} | User {row['tg_id']} | ₹{paise_to_rupees(row['amount_paise']):.2f} | {row['upi_id']}")
+            lines.append(f"#{row['id']} | User {row['tg_id']} | {paise_to_rupees(row['amount_paise']):.0f} coins | payout ₹{withdrawal_payout_inr(row['amount_paise']):.2f} | {row['upi_id']}")
             keyboard["inline_keyboard"].append([
                 {"text": f"Approve #{row['id']}", "callback_data": withdrawal_action_callback("approve", int(row["id"]))},
                 {"text": f"Reject #{row['id']}", "callback_data": withdrawal_action_callback("reject", int(row["id"]))},

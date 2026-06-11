@@ -115,7 +115,7 @@
       <section class="screen" id="refer-screen" data-screen="refer">
         <header class="section-head">
           <h2>Refer</h2>
-          <p>Earn when friends collect 50 coins.</p>
+          <p>Invite friends, earn 20 coins per friend!</p>
         </header>
         <section class="refer-card">
           <span>Your link</span>
@@ -134,25 +134,38 @@
             <strong id="ref-earned">0 Coins</strong>
           </div>
         </section>
-        <p class="passive-note">Earn 10 coins when your friend earns 50 coins.</p>
+        <p class="passive-note">Invite friends, earn 20 coins per friend!</p>
       </section>
 
       <section class="screen" id="withdraw-screen" data-screen="withdraw">
         <header class="section-head">
           <h2>Withdraw</h2>
-          <p>Minimum payout is 1000 coins by UPI.</p>
+          <p>2 coins = ₹1. Minimum payout is 1000 coins.</p>
         </header>
+        <section class="bonus-hold-card">
+          <div class="bonus-copy">
+            <span>Hold till 2000 coins, get ₹50 BONUS! 🎁</span>
+            <strong id="bonus-progress-label">0 / 2000 coins</strong>
+          </div>
+          <div class="bonus-progress-track">
+            <span id="bonus-progress-fill"></span>
+          </div>
+          <div class="withdraw-options">
+            <button class="secondary-btn" id="withdraw-now-btn" type="button">Withdraw ₹500 now</button>
+            <button class="primary-btn bonus-btn" id="withdraw-bonus-btn" type="button">Hold for ₹1050 bonus</button>
+          </div>
+        </section>
         <section class="withdraw-card">
           <div class="panel-row">
             <span>Current balance</span>
-            <strong id="withdraw-balance">₹0.00</strong>
+            <strong id="withdraw-balance">0 Coins</strong>
           </div>
           <label>
             UPI ID
             <input id="upi-id" inputmode="email" placeholder="name@upi" />
           </label>
           <label>
-            Amount
+            Coins to withdraw
             <input id="withdraw-amount" type="number" min="1000" step="1" placeholder="1000" />
           </label>
           <button class="primary-btn" id="submit-withdraw">Submit withdrawal</button>
@@ -162,6 +175,17 @@
           <h3 class="history-title">History</h3>
           <div class="history-list" id="withdraw-history"></div>
         </section>
+      </section>
+
+      <section class="screen" id="leaderboard-screen" data-screen="leaderboard">
+        <header class="section-head leaderboard-head">
+          <div>
+            <h2>Leaderboard</h2>
+            <p>Updated every Monday</p>
+          </div>
+          <span class="weekly-badge">Weekly reset</span>
+        </header>
+        <section class="leaderboard-list" id="leaderboard-list"></section>
       </section>
     </main>
 
@@ -173,6 +197,10 @@
       <button class="nav-btn" data-target="challenge">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19.1l1-5.8-4.2-4.1 5.9-.9L12 3Z"/></svg>
         Quests
+      </button>
+      <button class="nav-btn" data-target="leaderboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M5 5H3v2a4 4 0 0 0 4 4M19 5h2v2a4 4 0 0 1-4 4"/></svg>
+        Leaders
       </button>
       <button class="nav-btn" data-target="refer">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M3 21a9 9 0 0 1 18 0"/><path d="M18 8h3M19.5 6.5v3"/></svg>

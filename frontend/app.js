@@ -4,6 +4,10 @@ const OFFLINE_DEMO = !API_BASE || API_BASE.includes("YOUR_SUBDOMAIN");
 const DEMO_AD_CALLBACKS = Boolean(config.DEMO_AD_CALLBACKS);
 const adControllers = {};
 const AD_REWARD_AMOUNT = 5;
+const COINS_PER_RUPEE = 2;
+const MIN_WITHDRAWAL_COINS = 1000;
+const BONUS_WITHDRAWAL_COINS = 2000;
+const BONUS_WITHDRAWAL_RUPEES = 50;
 const ENERGY_MAX = 10;
 const ENERGY_BOOST_CAP = 15;
 const SPIN_CAP = 15;
@@ -36,7 +40,24 @@ const tgUser = tg?.initDataUnsafe?.user || demoUser;
 const startParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get("start");
 const AD_NETWORKS = ["adsgram", "monetag"];
 const DAILY_AD_MAX = AD_NETWORKS.length * 10 * AD_REWARD_AMOUNT;
-const VALID_SCREENS = new Set(["home", "challenge", "refer", "withdraw"]);
+const VALID_SCREENS = new Set(["home", "challenge", "leaderboard", "refer", "withdraw"]);
+const FAKE_LEADERS = [
+  { name: "Rahul_G", coins: 12450, withdrawn: 5820 },
+  { name: "priya.m99", coins: 11230, withdrawn: 5100 },
+  { name: "Karan_Plays", coins: 10890, withdrawn: 4980 },
+  { name: "sunny_bhai", coins: 9750, withdrawn: 4200 },
+  { name: "DeepakXYZ", coins: 9100, withdrawn: 3900 },
+  { name: "anita.k", coins: 8670, withdrawn: 3600 },
+  { name: "RajPatel07", coins: 7980, withdrawn: 3200 },
+  { name: "mohit_earn", coins: 7450, withdrawn: 2900 },
+  { name: "shweta.wins", coins: 6890, withdrawn: 2700 },
+  { name: "Vikram_India", coins: 6230, withdrawn: 2400 },
+  { name: "lucky786", coins: 5780, withdrawn: 2100 },
+  { name: "neha_coins", coins: 5100, withdrawn: 1980 },
+  { name: "ArjunSpin", coins: 4670, withdrawn: 1800 },
+  { name: "pooja.earn", coins: 3980, withdrawn: 1500 },
+  { name: "Rohit_Bhai", coins: 3200, withdrawn: 1200 },
+];
 
 function getInitialScreen() {
   const rawHash = decodeURIComponent((location.hash || "").replace(/^#/, ""));
@@ -121,13 +142,13 @@ async function mockApi(path, options = {}) {
       tg_id: tgUser.id,
       username: tgUser.username || null,
       first_name: tgUser.first_name || "Demo",
-      balance: 25,
-      total_earned: 25,
+      balance: 10,
+      total_earned: 10,
       total_withdrawn: 0,
       referral_code: "DEMO50",
       referred_by: null,
       referral_count: 3,
-      referral_earnings: 10,
+      referral_earnings: 60,
       referral_bonus_paid: true,
       ads_today: { adsgram: 0, monetag: 0, date: new Date().toISOString().slice(0, 10) },
       level: "bronze",
@@ -219,17 +240,29 @@ async function mockApi(path, options = {}) {
       id: mockState.withdrawals.length + 1,
       upi_id: body.upi_id,
       amount: body.amount,
+      payout_inr: payoutInr(body.amount),
+      bonus_rupees: body.amount >= BONUS_WITHDRAWAL_COINS ? BONUS_WITHDRAWAL_RUPEES : 0,
       status: "pending",
       requested_at: new Date().toISOString(),
       processed_at: null,
     });
-    return { success: true, new_balance: mockState.user.balance, flagged: false };
+    return { success: true, new_balance: mockState.user.balance, payout_inr: payoutInr(body.amount), flagged: false };
   }
   throw new Error("Offline demo route not implemented");
 }
 
 function money(value) {
   return `₹${Number(value || 0).toFixed(2)}`;
+}
+
+function payoutInr(coinsValue) {
+  const coinAmount = Number(coinsValue || 0);
+  const bonus = coinAmount >= BONUS_WITHDRAWAL_COINS ? BONUS_WITHDRAWAL_RUPEES : 0;
+  return coinAmount / COINS_PER_RUPEE + bonus;
+}
+
+function coinValueInr(coinsValue) {
+  return Number(coinsValue || 0) / COINS_PER_RUPEE;
 }
 
 function coins(value) {
@@ -333,15 +366,65 @@ function renderUser() {
   if (!state.user) return;
   $("#user-name").textContent = state.user.first_name || state.user.username || "MissionVault";
   $("#balance").textContent = `${coins(state.user.balance)} Coins`;
-  $("#balance-rupee").textContent = `(= ${money(state.user.balance)})`;
+  $("#balance-rupee").textContent = `(= ${money(coinValueInr(state.user.balance))})`;
   $("#withdraw-balance").textContent = `${coins(state.user.balance)} Coins`;
   $("#ref-count").textContent = state.user.referral_count || 0;
   $("#ref-earned").textContent = `${coins(state.user.referral_earnings)} Coins`;
+  renderWithdrawalBonus();
+  renderLeaderboard();
 
   const botName = config.BOT_USERNAME || "Watch_and3arn_bot";
   const link = `https://t.me/${botName}?start=${state.user.referral_code}`;
   $("#referral-link").value = link;
 
+}
+
+function renderWithdrawalBonus() {
+  if (!$("#bonus-progress-fill") || !state.user) return;
+  const balance = Number(state.user.balance || 0);
+  const progress = Math.max(0, Math.min(100, (balance / BONUS_WITHDRAWAL_COINS) * 100));
+  $("#bonus-progress-fill").style.width = `${progress}%`;
+  $("#bonus-progress-label").textContent = `${coins(Math.min(balance, BONUS_WITHDRAWAL_COINS))} / ${BONUS_WITHDRAWAL_COINS} coins`;
+  $("#withdraw-now-btn").disabled = balance < MIN_WITHDRAWAL_COINS;
+  $("#withdraw-bonus-btn").disabled = balance < BONUS_WITHDRAWAL_COINS;
+}
+
+function userLeaderboardSlot() {
+  const id = Number(tgUser.id || 0);
+  return 7 + (id % 5);
+}
+
+function medalForRank(rank) {
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return `#${rank}`;
+}
+
+function renderLeaderboard() {
+  const list = $("#leaderboard-list");
+  if (!list || !state.user) return;
+  const userIndex = userLeaderboardSlot();
+  const rows = FAKE_LEADERS.map((item) => ({ ...item, current: false }));
+  rows[userIndex] = {
+    name: state.user.username ? `@${state.user.username}` : state.user.first_name || "You",
+    coins: Math.round(Number(state.user.total_earned || state.user.balance || 0)),
+    withdrawn: coinValueInr(state.user.total_withdrawn || 0),
+    current: true,
+  };
+  list.innerHTML = rows.map((row, index) => {
+    const rank = index + 1;
+    return `
+      <article class="leader-row ${row.current ? "current-user" : ""} ${rank === 1 ? "rank-one" : ""}">
+        <span class="leader-rank">${medalForRank(rank)}</span>
+        <div>
+          <strong>${row.name}</strong>
+          <small>${Number(row.coins).toLocaleString("en-IN")} coins earned</small>
+        </div>
+        <em>${money(row.withdrawn)}</em>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderEnergy() {
@@ -464,6 +547,7 @@ function switchScreen(screen, options = {}) {
     loadTasks();
     if (state.user) loadChallenges();
   }
+  if (nextScreen === "leaderboard") renderLeaderboard();
   if (nextScreen === "withdraw") loadWithdrawals();
 }
 
@@ -736,7 +820,7 @@ async function loadWithdrawals() {
     list.innerHTML = data.withdrawals.map((item) => `
       <article class="history-item">
         <div>
-          <strong>${money(item.amount)}</strong><br />
+          <strong>${coins(item.amount)} coins → ${money(item.payout_inr ?? payoutInr(item.amount))}</strong><br />
           <small>${new Date(item.requested_at).toLocaleDateString()}</small>
         </div>
         <span class="status ${item.status}">${item.status}</span>
@@ -754,6 +838,10 @@ async function submitWithdraw() {
     showAlert("Enter UPI ID and amount.");
     return;
   }
+  if (amount < MIN_WITHDRAWAL_COINS) {
+    showAlert("Minimum withdrawal is 1000 coins.");
+    return;
+  }
   try {
     showLoader(true, "Submitting withdrawal...");
     const result = await api("/api/withdraw", {
@@ -763,11 +851,21 @@ async function submitWithdraw() {
     $("#withdraw-amount").value = "";
     await refreshUser();
     await loadWithdrawals();
-    showToast(result.admin_warning || "Withdrawal request pending admin review");
+    const payout = result.payout_inr ?? payoutInr(amount);
+    showToast(result.admin_warning || `Withdrawal request pending admin review · ${money(payout)}`);
   } catch (error) {
     showAlert(error.message);
   } finally {
     showLoader(false);
+  }
+}
+
+function chooseWithdrawAmount(amount) {
+  $("#withdraw-amount").value = String(amount);
+  if (amount >= BONUS_WITHDRAWAL_COINS) {
+    showToast("Bonus payout selected: 2000 coins → ₹1050");
+  } else {
+    showToast("Minimum payout selected: 1000 coins → ₹500");
   }
 }
 
@@ -794,6 +892,8 @@ function bindEvents() {
     await navigator.clipboard.writeText($("#referral-link").value);
     showToast("Referral link copied");
   });
+  $("#withdraw-now-btn").addEventListener("click", () => chooseWithdrawAmount(MIN_WITHDRAWAL_COINS));
+  $("#withdraw-bonus-btn").addEventListener("click", () => chooseWithdrawAmount(BONUS_WITHDRAWAL_COINS));
   $("#submit-withdraw").addEventListener("click", submitWithdraw);
 }
 

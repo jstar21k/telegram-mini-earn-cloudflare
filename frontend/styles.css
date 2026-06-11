@@ -938,6 +938,78 @@ input:focus {
   gap: 13px;
 }
 
+.bonus-hold-card {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 15px;
+  overflow: hidden;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(255, 215, 0, 0.14), rgba(0, 200, 83, 0.08)),
+    rgba(26, 26, 46, 0.58);
+  border: 1px solid rgba(255, 215, 0, 0.22);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), 0 0 24px rgba(255, 215, 0, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.bonus-copy {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bonus-copy span {
+  color: #fff6cf;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.bonus-copy strong {
+  flex: 0 0 auto;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.bonus-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.bonus-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #00c853, #ffd700);
+  box-shadow: 0 0 18px rgba(255, 215, 0, 0.35);
+  transition: width 220ms ease;
+}
+
+.withdraw-options {
+  display: grid;
+  grid-template-columns: 1fr 1.12fr;
+  gap: 9px;
+}
+
+.withdraw-options .secondary-btn,
+.withdraw-options .primary-btn {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.bonus-btn {
+  color: #231500;
+  background: linear-gradient(135deg, #ffd700, #ffaa00);
+  box-shadow: 0 0 18px rgba(255, 215, 0, 0.3);
+}
+
 .history-title {
   margin: 18px 0 10px;
 }
@@ -949,6 +1021,110 @@ input:focus {
   padding: 13px;
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.045);
+}
+
+.leaderboard-head {
+  align-items: center;
+}
+
+.leaderboard-head p {
+  margin-top: 6px;
+  text-align: left;
+}
+
+.weekly-badge {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-radius: 999px;
+  color: #dfffe8;
+  background: rgba(0, 200, 83, 0.13);
+  border: 1px solid rgba(0, 200, 83, 0.2);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.leaderboard-list {
+  display: grid;
+  gap: 9px;
+}
+
+.leader-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 66px;
+  padding: 12px;
+  overflow: hidden;
+  border-radius: 14px;
+  color: var(--text);
+  background: rgba(26, 26, 46, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.leader-rank {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #f2f2f2;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.leader-row strong,
+.leader-row small {
+  display: block;
+}
+
+.leader-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.leader-row small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.leader-row em {
+  color: #dfffe8;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.leader-row.current-user {
+  border-color: rgba(0, 200, 83, 0.4);
+  background:
+    linear-gradient(135deg, rgba(0, 200, 83, 0.18), rgba(255, 255, 255, 0.03)),
+    rgba(14, 35, 22, 0.76);
+  box-shadow: 0 0 22px rgba(0, 200, 83, 0.14);
+}
+
+.leader-row.current-user .leader-rank {
+  color: #021108;
+  background: linear-gradient(135deg, #00c853, #86ff9d);
+}
+
+.leader-row.rank-one::after {
+  content: "";
+  position: absolute;
+  inset: -70% auto -70% -35%;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.28), transparent);
+  transform: rotate(20deg);
+  animation: shimmer 2.6s ease-in-out infinite;
 }
 
 .status {
@@ -984,7 +1160,7 @@ input:focus {
   max-width: 480px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   padding: 8px 10px max(8px, env(safe-area-inset-bottom));
   border-top: 1px solid #222222;
   background: rgba(17, 17, 24, 0.96);
@@ -999,7 +1175,7 @@ input:focus {
   padding: 8px 3px;
   color: #7c7c82;
   background: transparent;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
 }
 
@@ -1173,6 +1349,15 @@ input:focus {
 
   .challenge-card.challenge-final {
     grid-column: span 2;
+  }
+
+  .withdraw-options {
+    grid-template-columns: 1fr;
+  }
+
+  .leader-row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    padding: 11px 10px;
   }
 }
 
