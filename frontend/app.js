@@ -13,7 +13,6 @@ const ENERGY_BOOST_CAP = 15;
 const SPIN_CAP = 15;
 const CHALLENGE_CAP = 15;
 const FREE_SPIN_PREFIX = "missionvault.freeSpinUsed.";
-const SOUND_PREF_KEY = "missionvault.spinSoundMuted";
 const CHALLENGE_REWARDS = [2, 2, 3, 3, 5, 5, 8, 8, 10, 10, 15, 15, 20, 25, 50];
 const SPIN_SEGMENTS = [
   { id: 1, reward: 500, label: "+500", tease: false },
@@ -80,7 +79,6 @@ const state = {
   energy: null,
   challenges: null,
   wheelRotation: 0,
-  soundMuted: localStorage.getItem(SOUND_PREF_KEY) === "1",
   loading: false,
 };
 
@@ -334,110 +332,6 @@ function showToast(message = "⚡ +5 Coins Earned!") {
   setTimeout(() => toast.classList.remove("show"), 4200);
 }
 
-function audioContext() {
-  if (state.soundMuted) return null;
-  const AudioCtor = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtor) return null;
-  if (!state.audioCtx) state.audioCtx = new AudioCtor();
-  if (state.audioCtx.state === "suspended") {
-    state.audioCtx.resume().catch(() => {});
-  }
-  return state.audioCtx;
-}
-
-function playTick(frequency = 300) {
-  const ctx = audioContext();
-  if (!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.frequency.value = frequency;
-  gain.gain.setValueAtTime(0.3, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.05);
-}
-
-function playSuspense() {
-  const ctx = audioContext();
-  if (!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(150, ctx.currentTime);
-  osc.frequency.linearRampToValueAtTime(200, ctx.currentTime + 0.8);
-  gain.gain.setValueAtTime(0.2, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.8);
-}
-
-function playWin() {
-  const ctx = audioContext();
-  if (!ctx) return;
-  [523, 659, 784].forEach((freq, index) => {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = freq;
-    osc.type = "sine";
-    const t = ctx.currentTime + index * 0.15;
-    gain.gain.setValueAtTime(0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-    osc.start(t);
-    osc.stop(t + 0.3);
-  });
-}
-
-function playSmallWin() {
-  const ctx = audioContext();
-  if (!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.frequency.value = 440;
-  osc.type = "sine";
-  gain.gain.setValueAtTime(0.2, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.3);
-}
-
-function playLose() {
-  const ctx = audioContext();
-  if (!ctx) return;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(200, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.4);
-  gain.gain.setValueAtTime(0.3, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.4);
-}
-
-function updateSoundToggle() {
-  const toggle = $("#sound-toggle");
-  if (!toggle) return;
-  toggle.textContent = state.soundMuted ? "🔇" : "🔊";
-  toggle.setAttribute("aria-label", state.soundMuted ? "Unmute spin sounds" : "Mute spin sounds");
-  toggle.classList.toggle("muted", state.soundMuted);
-}
-
-function toggleSpinSound() {
-  state.soundMuted = !state.soundMuted;
-  localStorage.setItem(SOUND_PREF_KEY, state.soundMuted ? "1" : "0");
-  updateSoundToggle();
-}
-
 function userMessage(error, fallback = "Mission could not start. Please try again.") {
   if (!error) return fallback;
   if (typeof error === "string") return error;
@@ -585,12 +479,12 @@ function normalizeAngle(angle) {
   return ((angle % 360) + 360) % 360;
 }
 
-function easeOut(t) {
+function easeOutQuart(t) {
   return 1 - Math.pow(1 - t, 4);
 }
 
-function easeIn(t) {
-  return t * t;
+function easeInCubic(t) {
+  return t * t * t;
 }
 
 function baseRotationForSegment(segmentId) {
@@ -628,62 +522,64 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function setSpinCenter(value, animate = false) {
-  const center = $("#spin-result");
-  center.classList.remove("result-pop");
-  center.textContent = value;
-  if (animate) {
-    requestAnimationFrame(() => center.classList.add("result-pop"));
-  }
+function showSpinResultToast(result) {
+  const toast = $("#spin-result-toast");
+  const reward = Number(result.prize_coins ?? result.reward ?? 0);
+  toast.hidden = false;
+  toast.textContent = reward > 0 ? `+${reward} Coins! 🎉` : "Better Luck 😔";
+  toast.classList.remove("show", "win", "lose");
+  toast.classList.add(reward > 0 ? "win" : "lose");
+  requestAnimationFrame(() => toast.classList.add("show"));
+  clearTimeout(state.spinToastTimer);
+  state.spinToastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => {
+      if (!toast.classList.contains("show")) toast.hidden = true;
+    }, 220);
+  }, 2000);
 }
 
-function segmentIndexAt(rotation) {
-  return Math.floor(normalizeAngle(rotation) / SEGMENT_SIZE);
-}
-
-function tickProgress(nextRotation, previousIndex, frequency = 300) {
-  const nextIndex = segmentIndexAt(nextRotation);
-  if (previousIndex !== null && nextIndex !== previousIndex) playTick(frequency);
-  return nextIndex;
+function setWheelRotation(rotation) {
+  const wheel = $("#spin-wheel");
+  state.wheelRotation = rotation;
+  wheel.style.transform = `rotate(${rotation}deg)`;
 }
 
 function animateRotationFrame(targetRotation, duration, options = {}) {
   const wheel = $("#spin-wheel");
   const startRotation = Number(state.wheelRotation || 0);
   const total = targetRotation - startRotation;
-  const startDelta = Math.min(total * 0.16, 260);
-  const steadyDelta = Math.min(total * 0.42, 800);
-  const decelDelta = total - startDelta - steadyDelta;
+  const launchMs = options.creep ? 0 : 500;
+  const fullSpeedMs = options.creep ? 0 : 2500;
+  const decelMs = duration - launchMs - fullSpeedMs;
+  const launchDelta = options.creep ? 0 : Math.min(210, total * 0.1);
+  const fullSpeedDelta = options.creep ? 0 : Math.min(1800, total * 0.62);
+  const decelDelta = total - launchDelta - fullSpeedDelta;
   const startTime = performance.now();
-  const startMs = options.creep ? 0 : 520;
-  const steadyMs = options.creep ? 0 : 1350;
-  const decelMs = duration - startMs - steadyMs;
-  let lastIndex = segmentIndexAt(startRotation);
 
   wheel.style.transition = "none";
+  if (!options.creep) wheel.classList.add("motion-blur");
   return new Promise((resolve) => {
     function frame(now) {
       const elapsed = Math.min(now - startTime, duration);
       let rotation;
       if (options.creep) {
-        rotation = startRotation + total * easeOut(elapsed / duration);
-      } else if (elapsed < startMs) {
-        rotation = startRotation + startDelta * easeIn(elapsed / startMs);
-      } else if (elapsed < startMs + steadyMs) {
-        rotation = startRotation + startDelta + steadyDelta * ((elapsed - startMs) / steadyMs);
+        rotation = startRotation + total * easeOutQuart(elapsed / duration);
+      } else if (elapsed < launchMs) {
+        rotation = startRotation + launchDelta * easeInCubic(elapsed / launchMs);
+      } else if (elapsed < launchMs + fullSpeedMs) {
+        rotation = startRotation + launchDelta + fullSpeedDelta * ((elapsed - launchMs) / fullSpeedMs);
       } else {
-        const t = Math.min((elapsed - startMs - steadyMs) / decelMs, 1);
-        rotation = startRotation + startDelta + steadyDelta + decelDelta * easeOut(t);
+        wheel.classList.remove("motion-blur");
+        const t = Math.min((elapsed - launchMs - fullSpeedMs) / decelMs, 1);
+        rotation = startRotation + launchDelta + fullSpeedDelta + decelDelta * easeOutQuart(t);
       }
-      const tickFrequency = options.creep ? 280 : elapsed < startMs ? 300 + (elapsed / startMs) * 70 : 320;
-      lastIndex = tickProgress(rotation, lastIndex, tickFrequency);
-      state.wheelRotation = rotation;
-      wheel.style.transform = `rotate(${rotation}deg)`;
+      setWheelRotation(rotation);
       if (elapsed < duration) {
         requestAnimationFrame(frame);
       } else {
-        state.wheelRotation = targetRotation;
-        wheel.style.transform = `rotate(${targetRotation}deg)`;
+        wheel.classList.remove("motion-blur");
+        setWheelRotation(targetRotation);
         resolve();
       }
     }
@@ -691,40 +587,42 @@ function animateRotationFrame(targetRotation, duration, options = {}) {
   });
 }
 
+async function bounceStop(rotation) {
+  const pointer = $(".wheel-pointer");
+  setWheelRotation(rotation - 3);
+  await wait(90);
+  setWheelRotation(rotation + 1.4);
+  await wait(80);
+  setWheelRotation(rotation);
+  pointer.classList.add("bounce");
+  setTimeout(() => pointer.classList.remove("bounce"), 320);
+  await wait(120);
+}
+
 async function animateWheelResult(result) {
   const wheel = $("#spin-wheel");
   const actualSegment = visualSegmentForResult(result);
   const teaseSegment = teaseSegmentFor(result);
-  setSpinCenter("?");
+  $("#spin-result-toast").classList.remove("show");
   if (teaseSegment) {
     wheel.classList.add("tension");
-    const teaseTarget = nextRotationForSegment(teaseSegment, 4);
-    await animateRotationFrame(teaseTarget, 3200);
-    playSuspense();
-    await wait(820);
+    const teaseTarget = nextRotationForSegment(teaseSegment, 7);
+    await animateRotationFrame(teaseTarget, 5000);
+    await wait(600);
     wheel.classList.add("slip");
     const directForward = baseRotationForSegment(actualSegment) - baseRotationForSegment(teaseSegment);
     const creepDistance = directForward > 0 ? directForward : SEGMENT_SIZE;
-    await animateRotationFrame(teaseTarget + creepDistance, 850, { creep: true });
+    await animateRotationFrame(teaseTarget + creepDistance, 780, { creep: true });
+    await bounceStop(teaseTarget + creepDistance);
     wheel.classList.remove("tension", "slip");
   } else {
     wheel.classList.add("tension");
-    await animateRotationFrame(nextRotationForSegment(actualSegment, 5), 4600);
+    const target = nextRotationForSegment(actualSegment, 8);
+    await animateRotationFrame(target, 5000);
+    await bounceStop(target);
     wheel.classList.remove("tension");
   }
-  const reward = Number(result.prize_coins ?? result.reward ?? 0);
-  setSpinCenter(reward > 0 ? `+${reward}` : "😔", true);
-  if (reward === 100) playWin();
-  else if (reward === 0) playLose();
-  else playSmallWin();
-}
-
-function spinToastMessage(result) {
-  const reward = Number(result.prize_coins ?? result.reward ?? 0);
-  if (reward === 100) return "Lucky! 🎉 +100 Coins";
-  if (reward === 0) return "Almost! Try again 🎰";
-  if (reward === 5 || reward === 10) return "So close! +100 was just one step away 😭";
-  return `🎰 ${reward} Coins Won!`;
+  setTimeout(() => showSpinResultToast(result), 300);
 }
 
 function triggerConfetti() {
@@ -884,8 +782,6 @@ async function watchAd(network) {
 
 async function spinWheel() {
   try {
-    audioContext();
-    setSpinCenter("?");
     if (state.energy && Number(state.energy.spins_today || 0) >= Number(state.energy.spin_daily_cap || SPIN_CAP)) {
       showAlert("Come back tomorrow 🌙");
       return;
@@ -906,7 +802,6 @@ async function spinWheel() {
     await animateWheelResult(result);
     await refreshUser();
     if (Number(result.prize_coins || 0) === 100) triggerConfetti();
-    showToast(spinToastMessage(result));
   } catch (error) {
     showAlert(error.message);
   } finally {
@@ -1097,7 +992,6 @@ function bindEvents() {
   $("#refresh-btn").addEventListener("click", () => refreshUser().catch((error) => showAlert(error.message)));
   $("#toast-action").addEventListener("click", () => document.querySelector(".ad-card:not([disabled])")?.click());
   $("#spin-button").addEventListener("click", spinWheel);
-  $("#sound-toggle").addEventListener("click", toggleSpinSound);
   $("#challenge-slots").addEventListener("click", (event) => {
     const challenge = event.target.closest("button[data-challenge-slot]");
     if (challenge && !challenge.disabled) completeChallenge(challenge.dataset.challengeSlot);
@@ -1123,7 +1017,6 @@ function bindEvents() {
 async function boot() {
   setAvatar();
   bindEvents();
-  updateSoundToggle();
   switchScreen(state.activeScreen, { updateHash: false });
   try {
     await register();
