@@ -337,18 +337,6 @@ function userMessage(error, fallback = "Mission could not start. Please try agai
   return error.description || error.message || error.error || fallback;
 }
 
-function isAdsUnavailable(error) {
-  const message = userMessage(error).toLowerCase();
-  return [
-    "no ads",
-    "no ad",
-    "no banner",
-    "banner not found",
-    "not available",
-    "webapppopupparaminvalid",
-  ].some((part) => message.includes(part));
-}
-
 function showAlert(message) {
   const safeMessage = String(message || "Something went wrong. Please try again.").slice(0, 180);
   if (tg?.showAlert) {
@@ -735,10 +723,22 @@ async function earnSpinEnergy({ showResultToast = true } = {}) {
       showAlert("Max boosts reached for today");
       return null;
     }
-    const unlock = await runSpinUnlockAd();
+    showLoader(true, "Starting sponsor mission...");
+    const tokenData = await api("/api/ad-token", {
+      method: "POST",
+      body: JSON.stringify({ tg_id: tgUser.id, network: "adsgram" }),
+    });
+    if (!OFFLINE_DEMO) {
+      await showAdsgramAd();
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    }
+    if (DEMO_AD_CALLBACKS) {
+      await runDemoCallback("adsgram", tokenData.token);
+    }
     const result = await api("/api/energy-boost", {
       method: "POST",
-      body: JSON.stringify({ tg_id: tgUser.id, network: unlock.network, token: unlock.token }),
+      body: JSON.stringify({ tg_id: tgUser.id, token: tokenData.token }),
     });
     state.energy = result;
     renderEnergy();
@@ -750,40 +750,6 @@ async function earnSpinEnergy({ showResultToast = true } = {}) {
   } finally {
     showLoader(false);
   }
-}
-
-async function runSpinUnlockAd() {
-  const networks = ["adsgram", "monetag"];
-  let lastError = null;
-  for (const network of networks) {
-    try {
-      showLoader(true, network === "adsgram" ? "Starting sponsor mission..." : "Trying backup mission...");
-      const tokenData = await api("/api/ad-token", {
-        method: "POST",
-        body: JSON.stringify({ tg_id: tgUser.id, network }),
-      });
-      if (!OFFLINE_DEMO) {
-        if (network === "adsgram") {
-          await showAdsgramAd();
-        } else {
-          await showMonetagAd(tokenData.token, "spin_backup");
-        }
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, 900));
-      }
-      if (DEMO_AD_CALLBACKS) {
-        await runDemoCallback(network, tokenData.token);
-      }
-      return { network, token: tokenData.token };
-    } catch (error) {
-      lastError = error;
-      if (network !== "adsgram" || !isAdsUnavailable(error)) {
-        throw error;
-      }
-      console.warn("Adsgram unavailable, falling back to Monetag", error);
-    }
-  }
-  throw lastError || new Error("No sponsor mission available right now.");
 }
 
 async function boostEnergy() {
