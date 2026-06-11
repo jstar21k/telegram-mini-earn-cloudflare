@@ -13,17 +13,19 @@ const ENERGY_BOOST_CAP = 15;
 const SPIN_CAP = 15;
 const CHALLENGE_CAP = 15;
 const FREE_SPIN_PREFIX = "missionvault.freeSpinUsed.";
+const SOUND_PREF_KEY = "missionvault.spinSoundMuted";
 const CHALLENGE_REWARDS = [2, 2, 3, 3, 5, 5, 8, 8, 10, 10, 15, 15, 20, 25, 50];
 const SPIN_SEGMENTS = [
   { id: 1, reward: 500, label: "+500", tease: false },
-  { id: 2, reward: 100, label: "+100", tease: false },
-  { id: 3, reward: 5, label: "+5", tease: true },
-  { id: 4, reward: 50, label: "+50", tease: false },
-  { id: 5, reward: 0, label: "0", tease: true },
-  { id: 6, reward: 20, label: "+20", tease: false },
+  { id: 2, reward: 5, label: "+5", tease: true },
+  { id: 3, reward: 50, label: "+50", tease: false },
+  { id: 4, reward: 20, label: "+20", tease: false },
+  { id: 5, reward: 0, label: "😔", tease: true },
+  { id: 6, reward: 100, label: "+100", tease: false },
   { id: 7, reward: 10, label: "+10", tease: true },
   { id: 8, reward: 5, label: "+5", tease: true },
 ];
+const SEGMENT_SIZE = 360 / SPIN_SEGMENTS.length;
 
 const tg = window.Telegram?.WebApp;
 tg?.ready();
@@ -77,7 +79,8 @@ const state = {
   activeScreen: getInitialScreen(),
   energy: null,
   challenges: null,
-  wheelTurns: 0,
+  wheelRotation: 0,
+  soundMuted: localStorage.getItem(SOUND_PREF_KEY) === "1",
   loading: false,
 };
 
@@ -331,6 +334,110 @@ function showToast(message = "⚡ +5 Coins Earned!") {
   setTimeout(() => toast.classList.remove("show"), 4200);
 }
 
+function audioContext() {
+  if (state.soundMuted) return null;
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return null;
+  if (!state.audioCtx) state.audioCtx = new AudioCtor();
+  if (state.audioCtx.state === "suspended") {
+    state.audioCtx.resume().catch(() => {});
+  }
+  return state.audioCtx;
+}
+
+function playTick(frequency = 300) {
+  const ctx = audioContext();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.value = frequency;
+  gain.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.05);
+}
+
+function playSuspense() {
+  const ctx = audioContext();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(150, ctx.currentTime);
+  osc.frequency.linearRampToValueAtTime(200, ctx.currentTime + 0.8);
+  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.8);
+}
+
+function playWin() {
+  const ctx = audioContext();
+  if (!ctx) return;
+  [523, 659, 784].forEach((freq, index) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = freq;
+    osc.type = "sine";
+    const t = ctx.currentTime + index * 0.15;
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    osc.start(t);
+    osc.stop(t + 0.3);
+  });
+}
+
+function playSmallWin() {
+  const ctx = audioContext();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.value = 440;
+  osc.type = "sine";
+  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.3);
+}
+
+function playLose() {
+  const ctx = audioContext();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(200, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.4);
+  gain.gain.setValueAtTime(0.3, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.4);
+}
+
+function updateSoundToggle() {
+  const toggle = $("#sound-toggle");
+  if (!toggle) return;
+  toggle.textContent = state.soundMuted ? "🔇" : "🔊";
+  toggle.setAttribute("aria-label", state.soundMuted ? "Unmute spin sounds" : "Mute spin sounds");
+  toggle.classList.toggle("muted", state.soundMuted);
+}
+
+function toggleSpinSound() {
+  state.soundMuted = !state.soundMuted;
+  localStorage.setItem(SOUND_PREF_KEY, state.soundMuted ? "1" : "0");
+  updateSoundToggle();
+}
+
 function userMessage(error, fallback = "Mission could not start. Please try again.") {
   if (!error) return fallback;
   if (typeof error === "string") return error;
@@ -474,54 +581,142 @@ function renderChallenges() {
   }).join("");
 }
 
-function spinRotationForSegment(segmentId) {
-  const segmentSize = 360 / SPIN_SEGMENTS.length;
-  const centerAngle = (Number(segmentId || 1) - 0.5) * segmentSize;
-  return state.wheelTurns * 1800 + (360 - centerAngle);
+function normalizeAngle(angle) {
+  return ((angle % 360) + 360) % 360;
+}
+
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 4);
+}
+
+function easeIn(t) {
+  return t * t;
+}
+
+function baseRotationForSegment(segmentId) {
+  const centerAngle = (Number(segmentId || 1) - 0.5) * SEGMENT_SIZE;
+  return 360 - centerAngle;
+}
+
+function nextRotationForSegment(segmentId, minimumTurns = 4) {
+  const current = Number(state.wheelRotation || 0);
+  const base = baseRotationForSegment(segmentId);
+  let target = base + Math.ceil((current + minimumTurns * 360 - base) / 360) * 360;
+  while (target <= current + minimumTurns * 360 - 1) target += 360;
+  return target;
+}
+
+function visualSegmentForResult(result) {
+  const reward = Number(result.prize_coins ?? result.reward ?? 0);
+  if (reward === 500) return 1;
+  if (reward === 100) return 6;
+  if (reward === 50) return 3;
+  if (reward === 20) return 4;
+  if (reward === 10) return 7;
+  if (reward === 0) return 5;
+  return Number(result.segment_id) === 8 ? 8 : 2;
 }
 
 function teaseSegmentFor(result) {
   const reward = Number(result.prize_coins ?? result.reward ?? 0);
-  if (reward === 0) return 4; // +50 tease before Better Luck.
-  if (reward === 5 || reward === 10) return reward === 5 ? 2 : 4;
+  if (reward === 0) return 6;
+  if (reward === 5) return 3;
   return null;
-}
-
-function setWheelTransition(value) {
-  $("#spin-wheel").style.transition = value;
 }
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function setSpinCenter(value, animate = false) {
+  const center = $("#spin-result");
+  center.classList.remove("result-pop");
+  center.textContent = value;
+  if (animate) {
+    requestAnimationFrame(() => center.classList.add("result-pop"));
+  }
+}
+
+function segmentIndexAt(rotation) {
+  return Math.floor(normalizeAngle(rotation) / SEGMENT_SIZE);
+}
+
+function tickProgress(nextRotation, previousIndex, frequency = 300) {
+  const nextIndex = segmentIndexAt(nextRotation);
+  if (previousIndex !== null && nextIndex !== previousIndex) playTick(frequency);
+  return nextIndex;
+}
+
+function animateRotationFrame(targetRotation, duration, options = {}) {
+  const wheel = $("#spin-wheel");
+  const startRotation = Number(state.wheelRotation || 0);
+  const total = targetRotation - startRotation;
+  const startDelta = Math.min(total * 0.16, 260);
+  const steadyDelta = Math.min(total * 0.42, 800);
+  const decelDelta = total - startDelta - steadyDelta;
+  const startTime = performance.now();
+  const startMs = options.creep ? 0 : 520;
+  const steadyMs = options.creep ? 0 : 1350;
+  const decelMs = duration - startMs - steadyMs;
+  let lastIndex = segmentIndexAt(startRotation);
+
+  wheel.style.transition = "none";
+  return new Promise((resolve) => {
+    function frame(now) {
+      const elapsed = Math.min(now - startTime, duration);
+      let rotation;
+      if (options.creep) {
+        rotation = startRotation + total * easeOut(elapsed / duration);
+      } else if (elapsed < startMs) {
+        rotation = startRotation + startDelta * easeIn(elapsed / startMs);
+      } else if (elapsed < startMs + steadyMs) {
+        rotation = startRotation + startDelta + steadyDelta * ((elapsed - startMs) / steadyMs);
+      } else {
+        const t = Math.min((elapsed - startMs - steadyMs) / decelMs, 1);
+        rotation = startRotation + startDelta + steadyDelta + decelDelta * easeOut(t);
+      }
+      const tickFrequency = options.creep ? 280 : elapsed < startMs ? 300 + (elapsed / startMs) * 70 : 320;
+      lastIndex = tickProgress(rotation, lastIndex, tickFrequency);
+      state.wheelRotation = rotation;
+      wheel.style.transform = `rotate(${rotation}deg)`;
+      if (elapsed < duration) {
+        requestAnimationFrame(frame);
+      } else {
+        state.wheelRotation = targetRotation;
+        wheel.style.transform = `rotate(${targetRotation}deg)`;
+        resolve();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
 async function animateWheelResult(result) {
   const wheel = $("#spin-wheel");
+  const actualSegment = visualSegmentForResult(result);
   const teaseSegment = teaseSegmentFor(result);
+  setSpinCenter("?");
   if (teaseSegment) {
     wheel.classList.add("tension");
-    state.wheelTurns += 1;
-    setWheelTransition("transform 1900ms cubic-bezier(0.08, 0.76, 0.12, 1)");
-    wheel.style.transform = `rotate(${spinRotationForSegment(teaseSegment)}deg)`;
-    await wait(1950);
+    const teaseTarget = nextRotationForSegment(teaseSegment, 4);
+    await animateRotationFrame(teaseTarget, 3200);
+    playSuspense();
+    await wait(820);
     wheel.classList.add("slip");
-    state.wheelTurns += 1;
-    setWheelTransition("transform 720ms cubic-bezier(0.42, 0, 0.18, 1)");
-    wheel.style.transform = `rotate(${spinRotationForSegment(result.segment_id)}deg)`;
-    await wait(760);
+    const directForward = baseRotationForSegment(actualSegment) - baseRotationForSegment(teaseSegment);
+    const creepDistance = directForward > 0 ? directForward : SEGMENT_SIZE;
+    await animateRotationFrame(teaseTarget + creepDistance, 850, { creep: true });
     wheel.classList.remove("tension", "slip");
-    setWheelTransition("");
   } else {
     wheel.classList.add("tension");
-    state.wheelTurns += 1;
-    setWheelTransition("transform 2400ms cubic-bezier(0.06, 0.72, 0.09, 1)");
-    wheel.style.transform = `rotate(${spinRotationForSegment(result.segment_id)}deg)`;
-    await wait(2450);
+    await animateRotationFrame(nextRotationForSegment(actualSegment, 5), 4600);
     wheel.classList.remove("tension");
-    setWheelTransition("");
   }
   const reward = Number(result.prize_coins ?? result.reward ?? 0);
-  $("#spin-result").textContent = reward > 0 ? `+${reward}` : "0";
+  setSpinCenter(reward > 0 ? `+${reward}` : "😔", true);
+  if (reward === 100) playWin();
+  else if (reward === 0) playLose();
+  else playSmallWin();
 }
 
 function spinToastMessage(result) {
@@ -689,6 +884,8 @@ async function watchAd(network) {
 
 async function spinWheel() {
   try {
+    audioContext();
+    setSpinCenter("?");
     if (state.energy && Number(state.energy.spins_today || 0) >= Number(state.energy.spin_daily_cap || SPIN_CAP)) {
       showAlert("Come back tomorrow 🌙");
       return;
@@ -900,6 +1097,7 @@ function bindEvents() {
   $("#refresh-btn").addEventListener("click", () => refreshUser().catch((error) => showAlert(error.message)));
   $("#toast-action").addEventListener("click", () => document.querySelector(".ad-card:not([disabled])")?.click());
   $("#spin-button").addEventListener("click", spinWheel);
+  $("#sound-toggle").addEventListener("click", toggleSpinSound);
   $("#challenge-slots").addEventListener("click", (event) => {
     const challenge = event.target.closest("button[data-challenge-slot]");
     if (challenge && !challenge.disabled) completeChallenge(challenge.dataset.challengeSlot);
@@ -925,6 +1123,7 @@ function bindEvents() {
 async function boot() {
   setAvatar();
   bindEvents();
+  updateSoundToggle();
   switchScreen(state.activeScreen, { updateHash: false });
   try {
     await register();
