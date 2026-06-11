@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN referral_bonus_paid INTEGER NOT NULL DEFAULT 1;

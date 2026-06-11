@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>MissionVault</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+    <script src="https://libtl.com/sdk.js" data-zone="11129538" data-sdk="show_11129538"></script>
+    <script>
+      window.APP_CONFIG = {
+        API_BASE: "https://telegram-mini-earn-api.abhayrawani122-mini-earn.workers.dev",
+        BOT_USERNAME: "Watch_and3arn_bot",
+        ADSGRAM_BLOCK_ID: "int-34777",
+        MONETAG_ZONE_ID: "11129538",
+        MONETAG_SDK_FN: "show_11129538",
+        DEMO_AD_CALLBACKS: true,
+      };
+      window.ADSGRAM_BLOCK_ID = window.APP_CONFIG.ADSGRAM_BLOCK_ID;
+      window.MONETAG_ZONE_ID = window.APP_CONFIG.MONETAG_ZONE_ID;
+    </script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="screen active" id="home-screen" data-screen="home">
+        <section class="balance-panel">
+          <div>
+            <p>Vault Balance</p>
+            <strong id="balance">💎 0 Coins</strong>
+            <small id="balance-rupee">(= ₹0.00)</small>
+          </div>
+          <button class="icon-btn" id="refresh-btn" aria-label="Refresh balance">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.2-5M4 5v5h5M4 13a8 8 0 0 0 14.2 5M20 19v-5h-5"/></svg>
+          </button>
+        </section>
+
+        <header class="topbar compact-topbar">
+          <div class="profile">
+            <img id="avatar" class="avatar" alt="" />
+            <div>
+              <h1 id="user-name">MissionVault</h1>
+            </div>
+          </div>
+          <div class="level-pill" id="level-pill">Bronze</div>
+        </header>
+
+        <section class="spin-panel" id="spin-tab">
+          <div class="panel-row">
+            <div>
+              <span>Spin Wheel</span>
+              <p id="spin-status">Each spin costs 1 energy.</p>
+            </div>
+            <strong id="boost-count">0/15 boosts</strong>
+          </div>
+          <div class="reward-strip" id="spin-rewards">
+            <span>Rewards</span>
+            <strong>+5</strong>
+            <strong>+10</strong>
+            <strong>+15</strong>
+            <strong>+20</strong>
+          </div>
+          <div class="energy-dots" id="energy-dots" aria-label="Energy"></div>
+          <div class="wheel" id="spin-wheel">
+            <span id="spin-result">+?</span>
+          </div>
+          <div class="spin-actions">
+            <button class="primary-btn" id="spin-button" type="button">Spin</button>
+            <button class="secondary-btn" id="boost-energy" type="button">⚡ Boost Energy</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="screen" id="challenge-screen" data-screen="challenge">
+        <header class="section-head">
+          <h2>Daily Challenge</h2>
+          <p id="challenge-progress">0/15 challenges done today</p>
+        </header>
+        <section class="daily-challenges">
+          <div class="challenge-slots" id="challenge-slots"></div>
+        </section>
+        <section class="home-task-panel">
+          <div class="panel-row">
+            <div>
+              <span>Quests</span>
+              <p>Complete quests to earn bonus coins.</p>
+            </div>
+            <strong>+10 Coins</strong>
+          </div>
+          <div class="task-list" id="task-list"></div>
+        </section>
+      </section>
+
+      <section class="screen" id="refer-screen" data-screen="refer">
+        <header class="section-head">
+          <h2>Refer</h2>
+          <p>Earn when friends collect 50 coins.</p>
+        </header>
+        <section class="refer-card">
+          <span>Your link</span>
+          <div class="copy-row">
+            <input id="referral-link" readonly value="Loading..." />
+            <button id="copy-referral">Copy</button>
+          </div>
+        </section>
+        <section class="stats-grid">
+          <div>
+            <span>Friends</span>
+            <strong id="ref-count">0</strong>
+          </div>
+          <div>
+            <span>Earned</span>
+            <strong id="ref-earned">0 Coins</strong>
+          </div>
+        </section>
+        <p class="passive-note">Earn 10 coins when your friend earns 50 coins.</p>
+      </section>
+
+      <section class="screen" id="withdraw-screen" data-screen="withdraw">
+        <header class="section-head">
+          <h2>Withdraw</h2>
+          <p>Minimum payout is ₹400 by UPI.</p>
+        </header>
+        <section class="withdraw-card">
+          <div class="panel-row">
+            <span>Current balance</span>
+            <strong id="withdraw-balance">₹0.00</strong>
+          </div>
+          <label>
+            UPI ID
+            <input id="upi-id" inputmode="email" placeholder="name@upi" />
+          </label>
+          <label>
+            Amount
+            <input id="withdraw-amount" type="number" min="400" step="1" placeholder="400" />
+          </label>
+          <button class="primary-btn" id="submit-withdraw">Submit withdrawal</button>
+          <p class="form-note">New accounts can withdraw after 24 hours. Duplicate UPI IDs are flagged for review.</p>
+        </section>
+        <section>
+          <h3 class="history-title">History</h3>
+          <div class="history-list" id="withdraw-history"></div>
+        </section>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-target="home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V20H5v-9.5Z"/><path d="M9 20v-6h6v6"/></svg>
+        Home
+      </button>
+      <button class="nav-btn" data-target="challenge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19.1l1-5.8-4.2-4.1 5.9-.9L12 3Z"/></svg>
+        Daily
+      </button>
+      <button class="nav-btn" data-target="refer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M3 21a9 9 0 0 1 18 0"/><path d="M18 8h3M19.5 6.5v3"/></svg>
+        Refer
+      </button>
+      <button class="nav-btn" data-target="withdraw">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v11H4z"/><path d="M4 10h16M8 15h4"/></svg>
+        Withdraw
+      </button>
+    </nav>
+
+    <div class="reward-toast" id="reward-toast">
+      <span>⚡ +5 Coins Earned!</span>
+      <button id="toast-action">Next Mission</button>
+    </div>
+
+    <div class="loader" id="loader" hidden>
+      <div></div>
+      <span>Preparing mission...</span>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

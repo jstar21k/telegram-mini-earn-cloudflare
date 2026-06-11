@@ -1,0 +1,15 @@
+[project]
+name = "telegram-mini-earn-cloudflare"
+version = "0.1.0"
+description = "Cloudflare-only Telegram Mini App earning platform with FastAPI Python Worker and D1."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi",
+  "pydantic",
+]
+
+[dependency-groups]
+dev = [
+  "workers-py",
+  "pytest",
+]

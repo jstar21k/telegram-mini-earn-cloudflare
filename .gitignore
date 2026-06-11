@@ -1,0 +1,13 @@
+.dev.vars
+.wrangler/
+.venv/
+.venv-workers/
+.uv-cache/
+.pytest_cache/
+python_modules/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+coverage/
+.DS_Store

@@ -1,0 +1,17 @@
+{
+  "name": "telegram-mini-earn-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "worker:dev": "uv run pywrangler dev",
+    "worker:deploy": "uv run pywrangler deploy",
+    "d1:create": "npx wrangler d1 create telegram-mini-earn-db",
+    "d1:migrate:local": "npx wrangler d1 migrations apply telegram-mini-earn-db --local",
+    "d1:migrate:remote": "npx wrangler d1 migrations apply telegram-mini-earn-db --remote",
+    "pages:deploy": "npx wrangler pages deploy frontend --project-name telegram-mini-earn",
+    "test": "uv run pytest"
+  },
+  "devDependencies": {
+    "wrangler": "latest"
+  }
+}
