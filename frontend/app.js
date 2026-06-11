@@ -331,12 +331,35 @@ function showToast(message = "⚡ +5 Coins Earned!") {
   setTimeout(() => toast.classList.remove("show"), 4200);
 }
 
+function userMessage(error, fallback = "Mission could not start. Please try again.") {
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  return error.description || error.message || error.error || fallback;
+}
+
+function isAdsUnavailable(error) {
+  const message = userMessage(error).toLowerCase();
+  return [
+    "no ads",
+    "no ad",
+    "no banner",
+    "banner not found",
+    "not available",
+    "webapppopupparaminvalid",
+  ].some((part) => message.includes(part));
+}
+
 function showAlert(message) {
+  const safeMessage = String(message || "Something went wrong. Please try again.").slice(0, 180);
   if (tg?.showAlert) {
-    tg.showAlert(message);
-  } else {
-    alert(message);
+    try {
+      tg.showAlert(safeMessage);
+      return;
+    } catch (error) {
+      console.warn("Telegram alert failed", error);
+    }
   }
+  alert(safeMessage);
 }
 
 function setAvatar() {
@@ -610,8 +633,22 @@ async function showAdsgramAd() {
   if (!window.Adsgram?.init) {
     throw new Error("Mission provider is not loaded. Open MissionVault inside Telegram and try again.");
   }
-  adControllers.adsgram ||= window.Adsgram.init({ blockId });
-  await adControllers.adsgram.show();
+  const controller = window.Adsgram.init({ blockId });
+  try {
+    const result = await controller.show();
+    if (result && result.error) {
+      throw result;
+    }
+    return result;
+  } catch (error) {
+    throw new Error(userMessage(error, "No sponsor mission available right now."));
+  } finally {
+    try {
+      controller.destroy?.();
+    } catch (error) {
+      console.warn("Adsgram cleanup failed", error);
+    }
+  }
 }
 
 async function showMonetagAd(token, requestVar = "home_monetag_button") {
@@ -698,22 +735,10 @@ async function earnSpinEnergy({ showResultToast = true } = {}) {
       showAlert("Max boosts reached for today");
       return null;
     }
-    showLoader(true, "Watch sponsor mission to unlock a spin...");
-    const tokenData = await api("/api/ad-token", {
-      method: "POST",
-      body: JSON.stringify({ tg_id: tgUser.id, network: "adsgram" }),
-    });
-    if (!OFFLINE_DEMO) {
-      await showAdsgramAd();
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, 900));
-    }
-    if (DEMO_AD_CALLBACKS) {
-      await runDemoCallback("adsgram", tokenData.token);
-    }
+    const unlock = await runSpinUnlockAd();
     const result = await api("/api/energy-boost", {
       method: "POST",
-      body: JSON.stringify({ tg_id: tgUser.id, token: tokenData.token }),
+      body: JSON.stringify({ tg_id: tgUser.id, network: unlock.network, token: unlock.token }),
     });
     state.energy = result;
     renderEnergy();
@@ -725,6 +750,40 @@ async function earnSpinEnergy({ showResultToast = true } = {}) {
   } finally {
     showLoader(false);
   }
+}
+
+async function runSpinUnlockAd() {
+  const networks = ["adsgram", "monetag"];
+  let lastError = null;
+  for (const network of networks) {
+    try {
+      showLoader(true, network === "adsgram" ? "Starting sponsor mission..." : "Trying backup mission...");
+      const tokenData = await api("/api/ad-token", {
+        method: "POST",
+        body: JSON.stringify({ tg_id: tgUser.id, network }),
+      });
+      if (!OFFLINE_DEMO) {
+        if (network === "adsgram") {
+          await showAdsgramAd();
+        } else {
+          await showMonetagAd(tokenData.token, "spin_backup");
+        }
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+      }
+      if (DEMO_AD_CALLBACKS) {
+        await runDemoCallback(network, tokenData.token);
+      }
+      return { network, token: tokenData.token };
+    } catch (error) {
+      lastError = error;
+      if (network !== "adsgram" || !isAdsUnavailable(error)) {
+        throw error;
+      }
+      console.warn("Adsgram unavailable, falling back to Monetag", error);
+    }
+  }
+  throw lastError || new Error("No sponsor mission available right now.");
 }
 
 async function boostEnergy() {

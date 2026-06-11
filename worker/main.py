@@ -106,6 +106,7 @@ class TaskVerifyBody(BaseModel):
 class EnergyActionBody(BaseModel):
     tg_id: int
     token: str | None = None
+    network: Literal["adsgram", "monetag"] = "adsgram"
     free_spin: bool = False
 
 
@@ -851,7 +852,7 @@ async def api_energy_boost(body: EnergyActionBody, req: Request):
     boosts_today = int(user.get("boosts_today") or 0)
     if boosts_today >= ENERGY_BOOST_DAILY_CAP:
         raise HTTPException(status_code=429, detail="Max boosts reached for today")
-    await consume_completed_token(db, body.tg_id, "adsgram", body.token)
+    await consume_completed_token(db, body.tg_id, body.network, body.token)
     new_energy = min(ENERGY_MAX, int(user.get("energy") or 0) + ENERGY_PER_BOOST)
     boosts_today += 1
     await d1_run(
