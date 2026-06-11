@@ -50,20 +50,16 @@
             </div>
             <small id="balance-rupee">(= ₹0.00)</small>
           </div>
-          <button class="icon-btn" id="refresh-btn" aria-label="Refresh balance">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.2-5M4 5v5h5M4 13a8 8 0 0 0 14.2 5M20 19v-5h-5"/></svg>
-          </button>
-        </section>
-
-        <header class="topbar compact-topbar">
-          <div class="profile">
-            <img id="avatar" class="avatar" alt="" />
-            <div>
-              <h1 id="user-name">MissionVault</h1>
+          <div class="balance-side">
+            <button class="icon-btn" id="refresh-btn" aria-label="Refresh balance">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.2-5M4 5v5h5M4 13a8 8 0 0 0 14.2 5M20 19v-5h-5"/></svg>
+            </button>
+            <div class="balance-profile">
+              <img id="avatar" class="avatar" alt="" />
+              <span id="user-name">MissionVault</span>
             </div>
           </div>
-          <div class="level-pill" id="level-pill">Bronze</div>
-        </header>
+        </section>
 
         <section class="spin-panel" id="spin-tab">
           <div class="panel-row">
@@ -72,17 +68,6 @@
               <p id="spin-status">Each spin costs 1 energy.</p>
             </div>
             <strong id="boost-count">🚀 0/15 Boosts</strong>
-          </div>
-          <div class="reward-strip" id="spin-rewards">
-            <span>Rewards</span>
-            <strong data-reward="5">+5</strong>
-            <strong data-reward="5">+5</strong>
-            <strong data-reward="10">+10</strong>
-            <strong data-reward="20">+20</strong>
-            <strong data-reward="20">+20</strong>
-            <strong data-reward="50">+50</strong>
-            <strong data-reward="100">+100</strong>
-            <strong data-reward="500">+500</strong>
           </div>
           <div class="energy-meter" aria-label="Energy and spins">
             <div class="energy-meter-head">
@@ -108,6 +93,16 @@
               </div>
               <strong id="spin-result">+?</strong>
             </div>
+          </div>
+          <div class="reward-strip" id="spin-rewards" aria-label="Wheel reward legend">
+            <strong data-reward="5">+5</strong>
+            <strong data-reward="5">+5</strong>
+            <strong data-reward="10">+10</strong>
+            <strong data-reward="20">+20</strong>
+            <strong data-reward="20">+20</strong>
+            <strong data-reward="50">+50</strong>
+            <strong data-reward="100">+100</strong>
+            <strong data-reward="500">+500</strong>
           </div>
           <div class="spin-actions">
             <button class="primary-btn spin-now-btn" id="spin-button" type="button">🎰 SPIN NOW</button>

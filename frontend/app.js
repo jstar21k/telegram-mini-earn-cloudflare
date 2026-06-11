@@ -283,7 +283,6 @@ function renderUser() {
   $("#balance").textContent = `${coins(state.user.balance)} Coins`;
   $("#balance-rupee").textContent = `(= ${money(state.user.balance)})`;
   $("#withdraw-balance").textContent = money(state.user.balance);
-  $("#level-pill").textContent = state.user.level || "bronze";
   $("#ref-count").textContent = state.user.referral_count || 0;
   $("#ref-earned").textContent = `${coins(state.user.referral_earnings)} Coins`;
 
