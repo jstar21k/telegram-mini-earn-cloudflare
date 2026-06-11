@@ -1171,6 +1171,61 @@ input:focus {
   animation: shimmer 2.6s ease-in-out infinite;
 }
 
+.your-rank-card {
+  margin-top: 14px;
+  padding: 14px;
+  overflow: hidden;
+  border-radius: 16px;
+  color: var(--text);
+  background:
+    linear-gradient(135deg, rgba(0, 200, 83, 0.12), rgba(255, 255, 255, 0.035)),
+    rgba(26, 26, 46, 0.66);
+  border: 1px solid rgba(0, 200, 83, 0.18);
+  box-shadow: 0 0 24px rgba(0, 200, 83, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.your-rank-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.your-rank-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.your-rank-line strong {
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #04120a;
+  background: linear-gradient(135deg, #00c853, #7dff93);
+}
+
+.your-rank-line span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.your-rank-line em {
+  color: #dfffe8;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.your-rank-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .status {
   padding: 6px 9px;
   border-radius: 999px;

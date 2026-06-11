@@ -401,11 +401,6 @@ function renderWithdrawalBonus() {
   $("#withdraw-bonus-btn").disabled = balance < BONUS_WITHDRAWAL_COINS;
 }
 
-function userLeaderboardSlot() {
-  const id = Number(tgUser.id || 0);
-  return 7 + (id % 5);
-}
-
 function medalForRank(rank) {
   if (rank === 1) return "🥇";
   if (rank === 2) return "🥈";
@@ -413,18 +408,32 @@ function medalForRank(rank) {
   return `#${rank}`;
 }
 
+function leaderboardUserName() {
+  return state.user?.username ? `@${state.user.username}` : state.user?.first_name || "You";
+}
+
+function userLeaderboardCoins() {
+  return Math.round(Number(state.user?.balance || 0));
+}
+
 function renderLeaderboard() {
   const list = $("#leaderboard-list");
+  const yourRank = $("#your-rank-card");
   if (!list || !state.user) return;
-  const userIndex = userLeaderboardSlot();
   const rows = FAKE_LEADERS.map((item) => ({ ...item, current: false }));
-  rows[userIndex] = {
-    name: state.user.username ? `@${state.user.username}` : state.user.first_name || "You",
-    coins: Math.round(Number(state.user.total_earned || state.user.balance || 0)),
+  const userCoins = userLeaderboardCoins();
+  const userRow = {
+    name: leaderboardUserName(),
+    coins: userCoins,
     withdrawn: coinValueInr(state.user.total_withdrawn || 0),
     current: true,
   };
-  list.innerHTML = rows.map((row, index) => {
+  const qualifiesForTop15 = userCoins > rows[rows.length - 1].coins;
+  const visibleRows = qualifiesForTop15
+    ? [...rows, userRow].sort((a, b) => b.coins - a.coins).slice(0, 15)
+    : rows;
+  const userTopRank = qualifiesForTop15 ? visibleRows.findIndex((row) => row.current) + 1 : null;
+  list.innerHTML = visibleRows.map((row, index) => {
     const rank = index + 1;
     return `
       <article class="leader-row ${row.current ? "current-user" : ""} ${rank === 1 ? "rank-one" : ""}">
@@ -437,6 +446,19 @@ function renderLeaderboard() {
       </article>
     `;
   }).join("");
+  if (yourRank) {
+    const displayRank = userTopRank ? `#${userTopRank}` : "#247";
+    const rankNote = userTopRank ? "You are in the Top 15! ðŸ”¥" : "Keep earning to reach Top 15! ðŸ”¥";
+    yourRank.innerHTML = `
+      <h3>Your Rank</h3>
+      <div class="your-rank-line">
+        <strong>${displayRank}</strong>
+        <span>${leaderboardUserName()}</span>
+        <em>${Number(userCoins).toLocaleString("en-IN")} coins</em>
+      </div>
+      <p>${rankNote}</p>
+    `;
+  }
 }
 
 function renderEnergy() {
