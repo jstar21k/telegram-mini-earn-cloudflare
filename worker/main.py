@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 IST = timezone(timedelta(hours=5, minutes=30))
 WELCOME_BONUS = 1_000
 REFERRAL_JOIN_BONUS = 2_000
+REFERRAL_UNLOCK_EARNED = 5_000
 AD_REWARD = 500
 TASK_DEFAULT_REWARD = 1_000
 MIN_WITHDRAWAL = 100_000
@@ -294,8 +295,12 @@ def calc_level(total_earned_paise: int) -> str:
     return "bronze"
 
 
-def should_unlock_referral_bonus(user: dict[str, Any], ad_earned_paise: int) -> bool:
-    return False
+def should_unlock_referral_bonus(user: dict[str, Any]) -> bool:
+    return (
+        optional_int(user.get("referred_by")) is not None
+        and int(user.get("referral_bonus_paid") or 0) == 0
+        and int(user.get("total_earned_paise") or 0) >= REFERRAL_UNLOCK_EARNED
+    )
 
 
 async def update_level(db: Any, tg_id: int) -> str:
@@ -406,7 +411,7 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
                 energy, boosts_today, spins_today, energy_reset_date, spin_reset_date,
                 challenges_today, challenges_reset_date, free_spin_used
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, 0, 0, 0, ?, ?, 0, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, 0, 0, 0, ?, ?, 0, ?, 0)
             """,
             body.tg_id,
             body.username or "",
@@ -455,46 +460,31 @@ async def register_user(db: Any, body: RegisterBody) -> dict[str, Any]:
             db,
             """
             UPDATE users
-            SET referral_count = referral_count + 1,
-                balance_paise = balance_paise + ?,
-                total_earned_paise = total_earned_paise + ?,
-                referral_earnings_paise = referral_earnings_paise + ?
+            SET referral_count = referral_count + 1
             WHERE tg_id = ?
             """,
-            REFERRAL_JOIN_BONUS,
-            REFERRAL_JOIN_BONUS,
-            REFERRAL_JOIN_BONUS,
             referrer["tg_id"],
         )
-        await add_transaction(
-            db,
-            referrer["tg_id"],
-            "referral_signup",
-            REFERRAL_JOIN_BONUS,
-            f"Referral bonus for inviting {body.tg_id}",
-        )
-        await update_level(db, referrer["tg_id"])
 
     user = await d1_first(db, "SELECT * FROM users WHERE tg_id = ?", body.tg_id)
     return await serialize_user(db, user)
 
 
-async def maybe_unlock_referral_bonus(db: Any, user: dict[str, Any]) -> None:
-    ad_total = await d1_first(
-        db,
-        "SELECT COALESCE(SUM(amount_paise), 0) AS total FROM transactions WHERE tg_id = ? AND type = 'ad_reward'",
-        user["tg_id"],
-    )
-    ad_earned_paise = int((ad_total or {}).get("total") or 0)
-    if not should_unlock_referral_bonus(user, ad_earned_paise):
+async def maybe_unlock_referral_bonus(db: Any, env: Any, user: dict[str, Any]) -> None:
+    if not should_unlock_referral_bonus(user):
         return
 
     referrer_id = optional_int(user.get("referred_by"))
-    await d1_run(
+    if referrer_id is None:
+        return
+
+    result = await d1_run(
         db,
         "UPDATE users SET referral_bonus_paid = 1 WHERE tg_id = ? AND referral_bonus_paid = 0",
         user["tg_id"],
     )
+    if d1_changes(result) == 0:
+        return
     await d1_run(
         db,
         """
@@ -517,6 +507,7 @@ async def maybe_unlock_referral_bonus(db: Any, user: dict[str, Any]) -> None:
         f"Referral bonus unlocked by {user['tg_id']} after ₹50 ad earnings",
     )
     await update_level(db, referrer_id)
+    await telegram_send_message(env, referrer_id, "Your friend is active! +20 coins added 🎉")
 
 
 def valid_signature(secret: str, payload: str, signature: str | None) -> bool:
@@ -688,6 +679,41 @@ async def api_user(tg_id: int, req: Request):
     return await serialize_user(db, user)
 
 
+@app.get("/api/referrals/{tg_id}")
+async def api_referrals(tg_id: int, req: Request):
+    db = db_from_request(req)
+    await get_user_or_404(db, tg_id)
+    rows = await d1_all(
+        db,
+        """
+        SELECT tg_id, username, first_name, total_earned_paise, referral_bonus_paid, created_at
+        FROM users
+        WHERE referred_by = ?
+        ORDER BY created_at DESC
+        """,
+        tg_id,
+    )
+    referrals = []
+    for row in rows:
+        earned_paise = int(row.get("total_earned_paise") or 0)
+        credited = bool(row.get("referral_bonus_paid"))
+        progress = min(REFERRAL_UNLOCK_EARNED, earned_paise)
+        referrals.append(
+            {
+                "tg_id": row["tg_id"],
+                "username": row.get("username"),
+                "first_name": row.get("first_name"),
+                "earned": paise_to_rupees(earned_paise),
+                "target": paise_to_rupees(REFERRAL_UNLOCK_EARNED),
+                "progress_percent": round((progress / REFERRAL_UNLOCK_EARNED) * 100),
+                "status": "credited" if credited else "pending",
+                "reward": paise_to_rupees(REFERRAL_JOIN_BONUS),
+                "created_at": row.get("created_at"),
+            }
+        )
+    return {"referrals": referrals}
+
+
 @app.post("/api/ad-token")
 async def api_ad_token(body: AdTokenBody, req: Request):
     db = db_from_request(req)
@@ -713,6 +739,7 @@ async def api_ad_token(body: AdTokenBody, req: Request):
 @app.post("/api/reward")
 async def api_reward(body: RewardBody, req: Request):
     db = db_from_request(req)
+    env = req.scope["env"]
     user = await get_user_or_404(db, body.tg_id)
     token = await d1_first(
         db,
@@ -776,6 +803,7 @@ async def api_reward(body: RewardBody, req: Request):
 
     level = await update_level(db, body.tg_id)
     updated = await get_user_or_404(db, body.tg_id)
+    await maybe_unlock_referral_bonus(db, env, updated)
     return {
         "success": True,
         "new_balance": paise_to_rupees(updated["balance_paise"]),
@@ -874,6 +902,7 @@ async def api_energy_boost(body: EnergyActionBody, req: Request):
 @app.post("/api/spin")
 async def api_spin(body: EnergyActionBody, req: Request):
     db = db_from_request(req)
+    env = req.scope["env"]
     user = await get_user_or_404(db, body.tg_id)
     energy = int(user.get("energy") or 0)
     spins_today = int(user.get("spins_today") or 0)
@@ -914,6 +943,7 @@ async def api_spin(body: EnergyActionBody, req: Request):
     await add_transaction(db, body.tg_id, "spin_reward", reward_paise, "Spin wheel reward")
     level = await update_level(db, body.tg_id)
     user = await get_user_or_404(db, body.tg_id)
+    await maybe_unlock_referral_bonus(db, env, user)
     return {
         "success": True,
         "prize_coins": reward,
@@ -956,6 +986,7 @@ async def api_challenges(tg_id: int, req: Request):
 @app.post("/api/challenge-complete")
 async def api_challenge_complete(body: ChallengeCompleteBody, req: Request):
     db = db_from_request(req)
+    env = req.scope["env"]
     user = await get_user_or_404(db, body.tg_id)
     done_today = int(user.get("challenges_today") or 0)
     if done_today >= CHALLENGE_DAILY_CAP:
@@ -988,6 +1019,7 @@ async def api_challenge_complete(body: ChallengeCompleteBody, req: Request):
     await add_transaction(db, body.tg_id, "challenge_reward", reward_paise, "Daily challenge reward", "monetag")
     level = await update_level(db, body.tg_id)
     user = await get_user_or_404(db, body.tg_id)
+    await maybe_unlock_referral_bonus(db, env, user)
     return {
         "success": True,
         "coins_earned": reward,
@@ -1036,6 +1068,7 @@ async def verify_task(task_id: int, body: TaskVerifyBody, req: Request):
     await add_transaction(db, body.tg_id, "task_reward", task["reward_paise"], f"Joined {task['channel_name']}")
     await update_level(db, body.tg_id)
     user = await get_user_or_404(db, body.tg_id)
+    await maybe_unlock_referral_bonus(db, env, user)
     return {"success": True, "new_balance": paise_to_rupees(user["balance_paise"])}
 
 
@@ -1309,7 +1342,7 @@ async def telegram_webhook(req: Request):
         link = f"https://t.me/{bot_name}?start={registered['referral_code']}"
         return telegram_reply(
             chat_id,
-            f"Your referral link:\n{link}\n\nFriends joined: {registered['referral_count']}\nReferral earnings: {registered['referral_earnings']:.0f} coins\nInvite friends, earn 20 coins per friend!",
+            f"Your referral link:\n{link}\n\nFriends joined: {registered['referral_count']}\nReferral earnings: {registered['referral_earnings']:.0f} coins\nEarn 20 coins when your friend earns 50 coins.",
         )
     elif command == "/withdraw":
         keyboard = {"inline_keyboard": [[{"text": "Open Withdrawal Form", "web_app": {"url": mini_url + '#withdraw'}}]]} if mini_url else None

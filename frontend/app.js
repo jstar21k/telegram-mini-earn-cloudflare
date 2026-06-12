@@ -78,6 +78,7 @@ const state = {
   activeScreen: getInitialScreen(),
   energy: null,
   challenges: null,
+  referrals: [],
   wheelRotation: 0,
   loading: false,
 };
@@ -107,6 +108,10 @@ const mockState = {
     total_coins_today: 181,
     daily_cap: 15,
   },
+  referrals: [
+    { first_name: "Rahul", username: "rahul_demo", earned: 23, target: 50, progress_percent: 46, status: "pending", reward: 20 },
+    { first_name: "Priya", username: "priya_demo", earned: 50, target: 50, progress_percent: 100, status: "credited", reward: 20 },
+  ],
   user: null,
 };
 
@@ -148,8 +153,8 @@ async function mockApi(path, options = {}) {
       total_withdrawn: 0,
       referral_code: "DEMO50",
       referred_by: null,
-      referral_count: 3,
-      referral_earnings: 60,
+      referral_count: 2,
+      referral_earnings: 20,
       referral_bonus_paid: true,
       ads_today: { adsgram: 0, monetag: 0, date: new Date().toISOString().slice(0, 10) },
       level: "bronze",
@@ -161,6 +166,9 @@ async function mockApi(path, options = {}) {
   }
   if (path === "/api/register" || path.startsWith("/api/user/")) {
     return structuredClone(mockState.user);
+  }
+  if (path.startsWith("/api/referrals/")) {
+    return { referrals: structuredClone(mockState.referrals) };
   }
   if (path === "/api/ad-token") {
     return { token: crypto.randomUUID(), network: body.network, expires_at: new Date(Date.now() + 600000).toISOString() };
@@ -389,6 +397,37 @@ function renderUser() {
   const link = `https://t.me/${botName}?start=${state.user.referral_code}`;
   $("#referral-link").value = link;
 
+}
+
+function referralDisplayName(item) {
+  return item.first_name || (item.username ? `@${item.username}` : "Friend");
+}
+
+function renderReferrals() {
+  const list = $("#referral-list");
+  if (!list) return;
+  const referrals = state.referrals || [];
+  if (!referrals.length) {
+    list.innerHTML = `<p class="empty-referrals">No referral joins yet. Share your link to start earning.</p>`;
+    return;
+  }
+  list.innerHTML = referrals.map((item) => {
+    const earned = Math.min(Number(item.earned || 0), Number(item.target || 50));
+    const target = Number(item.target || 50);
+    const percent = Math.max(0, Math.min(100, Number(item.progress_percent ?? ((earned / target) * 100))));
+    const credited = item.status === "credited";
+    const statusText = credited ? `✅ +${coins(item.reward || 20)} coins earned` : `${coins(earned)}/${coins(target)} coins earned`;
+    return `
+      <article class="referral-row ${credited ? "credited" : "pending"}">
+        <div class="referral-row-top">
+          <strong>${referralDisplayName(item)} joined</strong>
+          <span>${credited ? "Credited" : "Pending"}</span>
+        </div>
+        <p>${statusText}</p>
+        <div class="referral-progress"><span style="width:${percent}%"></span></div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderWithdrawalBonus() {
@@ -639,6 +678,7 @@ function switchScreen(screen, options = {}) {
     if (state.user) loadChallenges();
   }
   if (nextScreen === "leaderboard") renderLeaderboard();
+  if (nextScreen === "refer" && state.user) loadReferrals();
   if (nextScreen === "withdraw") loadWithdrawals();
 }
 
@@ -655,6 +695,7 @@ async function register() {
   renderUser();
   await loadChallenges();
   await loadEnergy();
+  await loadReferrals();
 }
 
 async function refreshUser() {
@@ -677,6 +718,17 @@ async function loadChallenges() {
     renderChallenges();
   } catch (error) {
     $("#challenge-progress").textContent = error.message;
+  }
+}
+
+async function loadReferrals() {
+  try {
+    const data = await api(`/api/referrals/${tgUser.id}`);
+    state.referrals = data.referrals || [];
+    renderReferrals();
+  } catch (error) {
+    const list = $("#referral-list");
+    if (list) list.innerHTML = `<p class="empty-referrals">${error.message}</p>`;
   }
 }
 
